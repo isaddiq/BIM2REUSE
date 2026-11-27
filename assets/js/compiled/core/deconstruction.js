@@ -16,7 +16,7 @@
   const STRUCTURAL_RE = /^Ifc(Beam|Column|Slab|Member|Plate|Footing|Pile|Wall|Roof|Stair|Ramp)/;
   const EMPTY_DECON = { tasks: {}, deps: [], durationUnit: "h" };
   function deconTasks(model) {
-    return model.elements.filter((el) => isPhysicalElement(el) && el.globalId && el.geometry);
+    return model.elements.filter((el) => isPhysicalElement(el) && componentIdOf(el) && el.geometry);
   }
   const depKey = (from, to) => `${from}>${to}`;
   function suggestFills(model) {
@@ -25,11 +25,11 @@
     if (!rel || !rel.voids || !rel.fills) return out;
     rel.voids.forEach((openings, hostId) => {
       const host = model.byId.get(hostId);
-      if (!host || !host.globalId) return;
+      if (!host || !componentIdOf(host)) return;
       openings.forEach((op) => (rel.fills.get(op) || []).forEach((fid) => {
         const f = model.byId.get(fid);
-        if (!f || !f.globalId || f.globalId === host.globalId) return;
-        out.push({ from: f.globalId, to: host.globalId, rule: "fills", reason: `${friendlyClass(f.ifcClass)} fills an opening in ${friendlyClass(host.ifcClass).toLowerCase()} ${host.name || host.globalId}` });
+        if (!f || !componentIdOf(f) || componentIdOf(f) === componentIdOf(host)) return;
+        out.push({ from: componentIdOf(f), to: componentIdOf(host), rule: "fills", reason: `${friendlyClass(f.ifcClass)} fills an opening in ${friendlyClass(host.ifcClass).toLowerCase()} ${host.name || componentIdOf(host)}` });
       }));
     });
     return out;
@@ -54,7 +54,7 @@
           const ox = Math.min(a.bbox.max[0], b.bbox.max[0]) - Math.max(a.bbox.min[0], b.bbox.min[0]);
           const oz = Math.min(a.bbox.max[2], b.bbox.max[2]) - Math.max(a.bbox.min[2], b.bbox.min[2]);
           if (ox <= 0 || oz <= 0 || ox * oz < minOverlap) return;
-          out.push({ from: a.globalId, to: b.globalId, rule: "stacked", reason: `${friendlyClass(a.ifcClass)} rests on ${friendlyClass(b.ifcClass).toLowerCase()} ${b.name || b.globalId} (${(ox * oz).toFixed(2)} m\xB2 in plan)` });
+          out.push({ from: componentIdOf(a), to: componentIdOf(b), rule: "stacked", reason: `${friendlyClass(a.ifcClass)} rests on ${friendlyClass(b.ifcClass).toLowerCase()} ${b.name || componentIdOf(b)} (${(ox * oz).toFixed(2)} m\xB2 in plan)` });
         });
       }
     });
@@ -185,8 +185,8 @@
     const out = [];
     if (analysis.cycles.length) out.push({ level: "error", id: "cycles", text: `${analysis.cycles.length} dependency cycle${analysis.cycles.length === 1 ? "" : "s"}: ${analysis.blocked.length} tasks cannot be sequenced until a dependency in each cycle is removed.`, gids: analysis.blocked });
     const structural = deconTasks(model).filter((el) => STRUCTURAL_RE.test(el.ifcClass));
-    const unreviewed = structural.filter((el) => !["reviewed", "approved", "engineer"].includes((plan.tasks[el.globalId] || {}).review));
-    if (unreviewed.length) out.push({ level: "warn", id: "structural", text: `${unreviewed.length} structural element${unreviewed.length === 1 ? " has" : "s have"} no recorded review. Their removal needs a structural engineer's assessment and may need temporary works.`, gids: unreviewed.map((e) => e.globalId) });
+    const unreviewed = structural.filter((el) => !["reviewed", "approved", "engineer"].includes((plan.tasks[componentIdOf(el)] || {}).review));
+    if (unreviewed.length) out.push({ level: "warn", id: "structural", text: `${unreviewed.length} structural element${unreviewed.length === 1 ? " has" : "s have"} no recorded review. Their removal needs a structural engineer's assessment and may need temporary works.`, gids: unreviewed.map((e) => componentIdOf(e)) });
     const engineer = Object.entries(plan.tasks).filter(([, t]) => t.review === "engineer" || t.review === "hazard");
     if (engineer.length) out.push({ level: "warn", id: "flagged", text: `${engineer.length} task${engineer.length === 1 ? " is" : "s are"} flagged for a structural engineer or a hazardous material survey.`, gids: engineer.map(([g]) => g) });
     const suggested = plan.deps.filter((d) => d.status === "suggested");
@@ -195,11 +195,11 @@
     return out;
   }
   function deconActivitiesCsv(model, plan, analysis) {
-    const lines = [["stage", "global_id", "ifc_class", "name", "storey", "duration_" + (plan.durationUnit || "h"), "predecessors", "successors", "review", "earliest_start", "slack", "critical", "in_cycle", "notes"].join(",")];
-    const rows = deconTasks(model).map((el) => ({ el, s: analysis.stage.get(el.globalId) }));
+    const lines = [["stage", "component_id", "ifc_class", "name", "storey", "duration_" + (plan.durationUnit || "h"), "predecessors", "successors", "review", "earliest_start", "slack", "critical", "in_cycle", "notes"].join(",")];
+    const rows = deconTasks(model).map((el) => ({ el, s: analysis.stage.get(componentIdOf(el)) }));
     rows.sort((a, b) => (a.s || 1e9) - (b.s || 1e9) || String(a.el.ifcClass).localeCompare(b.el.ifcClass));
     rows.forEach(({ el, s }) => {
-      const g = el.globalId, t = plan.tasks[g] || {}, c = analysis.cpm;
+      const g = componentIdOf(el), t = plan.tasks[g] || {}, c = analysis.cpm;
       lines.push([s || null, g, el.ifcClass, el.name, el.storey ? el.storey.name : null, t.duration, (analysis.pred.get(g) || []).join(" "), (analysis.succ.get(g) || []).join(" "), REVIEW_LABEL[t.review || "unreviewed"], c ? c.es.get(g) : null, c ? c.slack.get(g) : null, c ? c.critical.has(g) ? "yes" : "no" : null, analysis.inCycle.has(g) ? "yes" : "no", t.notes].map(csvCellPlain).join(","));
     });
     return lines.join("\n");
@@ -208,10 +208,10 @@
     const q = (s) => `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     const used = new Set(plan.deps.filter((d) => d.status !== "rejected").flatMap((d) => [d.from, d.to]));
     const lines = ["digraph deconstruction {", "  rankdir=LR;", '  node [shape=box, fontname="Helvetica", fontsize=10];'];
-    deconTasks(model).filter((el) => used.has(el.globalId)).forEach((el) => {
-      const s = analysis.stage.get(el.globalId);
-      lines.push(`  ${q(el.globalId)} [label=${q(`${s ? `S${s} \xB7 ` : ""}${friendlyClass(el.ifcClass)}
-${el.name || el.globalId}`)}${analysis.inCycle.has(el.globalId) ? ", color=red" : ""}];`);
+    deconTasks(model).filter((el) => used.has(componentIdOf(el))).forEach((el) => {
+      const s = analysis.stage.get(componentIdOf(el));
+      lines.push(`  ${q(componentIdOf(el))} [label=${q(`${s ? `S${s} \xB7 ` : ""}${friendlyClass(el.ifcClass)}
+${el.name || componentIdOf(el)}`)}${analysis.inCycle.has(componentIdOf(el)) ? ", color=red" : ""}];`);
     });
     plan.deps.filter((d) => d.status !== "rejected").forEach((d) => lines.push(`  ${q(d.from)} -> ${q(d.to)} [${d.status === "suggested" ? "style=dashed, " : ""}tooltip=${q(DEP_RULE_LABEL[d.rule] || d.rule)}];`));
     lines.push("}");
@@ -228,7 +228,7 @@ ${el.name || el.globalId}`)}${analysis.inCycle.has(el.globalId) ? ", color=red" 
       stages: analysis.stages,
       cycles: analysis.cycles,
       criticalPath: analysis.cpm ? { total: analysis.cpm.total, tasks: analysis.order.filter((g) => analysis.cpm.critical.has(g)) } : null,
-      tasks: deconTasks(model).map((el) => ({ globalId: el.globalId, ifcClass: el.ifcClass, name: el.name, stage: analysis.stage.get(el.globalId) || null, ...plan.tasks[el.globalId] || {} })),
+      tasks: deconTasks(model).map((el) => ({ componentId: componentIdOf(el), globalId: el.globalId || null, surveyed: !!el.survey, ifcClass: el.ifcClass, name: el.name, stage: analysis.stage.get(componentIdOf(el)) || null, ...plan.tasks[componentIdOf(el)] || {} })),
       dependencies: plan.deps,
       caveat: "Preliminary planning aid. IFC geometry alone cannot establish a safe demolition sequence; structural removal, temporary works and site safety need qualified professional review."
     }, null, 2);

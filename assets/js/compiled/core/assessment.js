@@ -97,13 +97,14 @@
       ...missingInputs.map((m) => `Record: ${m.toLowerCase()}`),
       ...v("requiredTesting") ? [`Testing required: ${v("requiredTesting")}`] : []
     ];
-    return { globalId: p.globalId, expressId: p.expressId, outcome, reason, score, criteria, checks, followUp, missingEvidence: !p.evidence.length };
+    return { componentId: p.componentId, globalId: p.globalId, expressId: p.expressId, outcome, reason, score, criteria, checks, followUp, missingEvidence: !p.evidence.length };
   }
   function assessmentCsv(results, model, config) {
-    const head = ["GlobalId", "Element", "Outcome", "ScreeningIndex", ...ASSESSMENT_CRITERIA.map((c) => `${c.label}Score`), "FailedChecks", "UnconfirmedChecks", "MissingEvidence", "Reason", "FollowUp", "Weights", "SourceFile"];
+    const head = ["GlobalId", "ComponentId", "Element", "Outcome", "ScreeningIndex", ...ASSESSMENT_CRITERIA.map((c) => `${c.label}Score`), "FailedChecks", "UnconfirmedChecks", "MissingEvidence", "Reason", "FollowUp", "Weights", "SourceFile"];
     const lines = [head.join(",")];
     results.forEach((r) => lines.push([
       r.globalId,
+      r.componentId,
       r.elementName,
       OUTCOME_LABEL[r.outcome],
       r.score == null ? "" : r.score.toFixed(3),
@@ -114,7 +115,7 @@
       r.reason,
       r.followUp.join("; "),
       ASSESSMENT_CRITERIA.map((c) => `${c.id}=${config.weights[c.id]}`).join(" "),
-      model.fileName
+      r.globalId ? model.fileName : SURVEY_FILE_NAME
     ].map(csvCellPlain).join(",")));
     return lines.join("\n");
   }
@@ -124,14 +125,14 @@
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Reuse assessment \xB7 ${escHtml(projectName)}</title><style>
     body{font:12px/1.45 'IBM Plex Sans',system-ui,sans-serif;color:#1b1b1b;margin:24px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:18px 0 6px}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:4px 6px;border-bottom:1px solid #e5e5e5}th{font-weight:600;background:#f5f5f5}.note{color:#6b6b6b}.warn{background:#fdf3e6;border:1px solid #e9c48f;padding:8px 10px;border-radius:6px}
     @media print{body{margin:12mm}}</style></head><body>
-    <h1>Reuse assessment</h1><p class="note">Project: ${escHtml(projectName)} \xB7 Source model: ${escHtml(model.fileName)} \xB7 Generated ${escHtml((/* @__PURE__ */ new Date()).toLocaleString())} by BIM2REUSE</p>
+    <h1>Reuse assessment</h1><p class="note">Project: ${escHtml(projectName)} \xB7 Source: ${escHtml(model.isSurvey ? "building survey (no IFC model)" : model.fileName + (model.hasSurvey ? " and building survey" : ""))} \xB7 Generated ${escHtml((/* @__PURE__ */ new Date()).toLocaleString())} by BIM2REUSE</p>
     <p class="warn">The screening index is a custom index for prioritising components. It is not a certified structural or regulatory assessment. Mandatory checks override the index.</p>
     <h2>Screening criteria and weights</h2><table><tr><th>Criterion</th><th>Weight</th><th>Input</th></tr>${ASSESSMENT_CRITERIA.map((c) => `<tr><td>${c.label}</td><td>${config.weights[c.id]}</td><td>${escHtml(c.from)}</td></tr>`).join("")}</table>
     <p class="note">Thresholds: direct reuse \u2265 ${config.thresholds.direct} with condition \u2265 ${config.directMinCondition}; refurbishment \u2265 ${config.thresholds.refurbishment}; recycling evaluation \u2265 ${config.thresholds.recycling}.</p>
     <h2>Mandatory checks</h2><ul>${MANDATORY_CHECKS.map((c) => `<li>${escHtml(c.label)}: ${config.mandatory[c.id] ? "applied" : "not applied"}</li>`).join("")}</ul>
     <h2>Outcomes</h2><table><tr><th>Outcome</th><th>Components</th></tr>${counts.map(([o, n]) => `<tr><td>${escHtml(o.label)}</td><td>${n}</td></tr>`).join("")}</table>
-    <h2>Assessed components (${rows.length})</h2><table><tr><th>Component</th><th>GlobalId</th><th>Outcome</th><th>Index</th><th>Reason</th><th>Follow-up</th></tr>
-    ${rows.map((r) => `<tr><td>${escHtml(r.elementName)}</td><td>${escHtml(r.globalId)}</td><td>${escHtml(OUTCOME_LABEL[r.outcome])}</td><td>${r.score == null ? "\u2014" : r.score.toFixed(2)}</td><td>${escHtml(r.reason)}</td><td>${escHtml(r.followUp.join("; ") || "\u2014")}</td></tr>`).join("")}</table>
+    <h2>Assessed components (${rows.length})</h2><table><tr><th>Component</th><th>GlobalId or component ID</th><th>Outcome</th><th>Index</th><th>Reason</th><th>Follow-up</th></tr>
+    ${rows.map((r) => `<tr><td>${escHtml(r.elementName)}</td><td>${escHtml(r.globalId || `${r.componentId} (surveyed)`)}</td><td>${escHtml(OUTCOME_LABEL[r.outcome])}</td><td>${r.score == null ? "\u2014" : r.score.toFixed(2)}</td><td>${escHtml(r.reason)}</td><td>${escHtml(r.followUp.join("; ") || "\u2014")}</td></tr>`).join("")}</table>
     ${results.length - rows.length ? `<p class="note">${results.length - rows.length} components have automatic draft passports only and are unassessed.</p>` : ""}
     </body></html>`;
   }

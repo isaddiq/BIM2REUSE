@@ -254,7 +254,7 @@
       const row = byEl.get(el.expressId);
       const qLen = row && row.length && row.length.value != null ? row.length.value : null;
       let length = qLen;
-      let lengthSource = qLen != null ? "ifc" : null;
+      let lengthSource = qLen != null ? el.survey ? row.length.source : "ifc" : null;
       if (length == null && el.bbox && LINEAR_COMPONENTS.includes(component)) {
         const d = [0, 1, 2].map((a) => el.bbox.max[a] - el.bbox.min[a]);
         length = component === "column" ? d[1] : Math.max(d[0], d[2]);
@@ -264,10 +264,11 @@
       const crossSection = row && row.profileName ? row.profileName : null;
       const L = length != null ? Math.round(length * 1e3) / 1e3 : null;
       const key = [component, materialCategory, crossSection, L].join("|");
-      if (!groups.has(key)) groups.set(key, { id: `ifc-${groups.size + 1}`, label: `${COMPONENT_LABEL[component]}${crossSection ? ` ${crossSection}` : ""}${L ? ` ${L.toFixed(3)} m` : ""}`, component, materialCategory, crossSection, length: L, lengthSource, quantity: 0, grade: null, minCondition: null, requireVerified: false, origin: `IFC ${model.fileName}`, globalIds: [] });
+      if (!groups.has(key)) groups.set(key, { id: `ifc-${groups.size + 1}`, label: `${COMPONENT_LABEL[component]}${crossSection ? ` ${crossSection}` : ""}${L ? ` ${L.toFixed(3)} m` : ""}`, component, materialCategory, crossSection, length: L, lengthSource, quantity: 0, grade: null, minCondition: null, requireVerified: false, origin: model.isSurvey ? "Building survey" : `IFC ${model.fileName}`, globalIds: [], componentIds: [] });
       const g = groups.get(key);
       g.quantity++;
-      g.globalIds.push(el.globalId);
+      if (el.globalId) g.globalIds.push(el.globalId);
+      g.componentIds.push(componentIdOf(el));
     });
     return [...groups.values()];
   }
@@ -357,7 +358,7 @@
       [p.kerfMm, p.trimMm, p.objective, p.allowUnverified, p.allowConditional]
     ]));
   }
-  const ITEM_PLAN_KEYS = ["id", "name", "sourceBuilding", "globalId", "component", "material", "materialCategory", "crossSection", "grade", "quantity", "mass", "length", "distanceKm"];
+  const ITEM_PLAN_KEYS = ["id", "name", "sourceBuilding", "globalId", "componentId", "component", "material", "materialCategory", "crossSection", "grade", "quantity", "mass", "length", "distanceKm"];
   function compactMatchingResult(r) {
     const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k] == null ? null : o[k]]));
     return {
@@ -375,7 +376,7 @@
         fulfilled: q.fulfilled,
         eligible: q.eligible,
         reason: q.reason,
-        assignments: q.assignments.map((a) => ({ piece: a.piece, itemId: a.stock.itemId, unit: a.stock.k + 1, stockIdx: a.stock.idx, itemName: a.stock.item.name, sourceBuilding: a.stock.item.sourceBuilding || null, globalId: a.stock.item.globalId || null }))
+        assignments: q.assignments.map((a) => ({ piece: a.piece, itemId: a.stock.itemId, unit: a.stock.k + 1, stockIdx: a.stock.idx, itemName: a.stock.item.name, sourceBuilding: a.stock.item.sourceBuilding || null, globalId: a.stock.item.globalId || null, componentId: bankItemRef(a.stock.item) }))
       }))
     };
   }

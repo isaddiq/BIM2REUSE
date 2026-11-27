@@ -184,6 +184,11 @@
           this._sectionDragJustEnded = false;
           return;
         }
+        if (this._placement) {
+          const p = this._planePoint(e);
+          if (p) this._emit("place", { point: p, shift: e.shiftKey, x: e.clientX, y: e.clientY });
+          return;
+        }
         if (this._measureMode) {
           this._handleMeasureClick(e);
           return;
@@ -196,7 +201,7 @@
         this._emit("pick", { expressId: hit.expressId, overlay: hit.overlay || null, multi: e.ctrlKey || e.metaKey || e.shiftKey, x: e.clientX, y: e.clientY });
       });
       __publicField(this, "onDblClick", (e) => {
-        if (this._measureMode || this._annoMode) return;
+        if (this._measureMode || this._annoMode || this._placement) return;
         const hit = this._pickAt(e);
         if (hit.expressId != null && !hit.overlay) this.frameElements([hit.expressId]);
       });
@@ -240,6 +245,12 @@
           this._hoverRaf = 0;
           const ev = this._hoverEvent;
           if (!ev) return;
+          if (this._placement) {
+            const p = this._planePoint(ev);
+            this._setHover(null);
+            this._emit("placeHover", { point: p, shift: ev.shiftKey });
+            return;
+          }
           if (this.sectionEnabled && this.sectionHandleGroup) {
             const over = this._pickSectionHandle(ev);
             this.renderer.domElement.style.cursor = over ? "grab" : this._measureMode || this._annoMode ? "crosshair" : "";
@@ -332,7 +343,8 @@
       this._measureMarker = null;
       this.overlays = /* @__PURE__ */ new Map();
       this._frameListeners = /* @__PURE__ */ new Set();
-      this._listeners = { pick: [], hover: [], measure: [], anno: [], sectionBox: [], camera: [], context: [], loaded: [] };
+      this._listeners = { pick: [], hover: [], measure: [], anno: [], sectionBox: [], camera: [], context: [], loaded: [], place: [], placeHover: [] };
+      this._placement = null;
       this.raycaster = new THREE.Raycaster();
       this.mouse = new THREE.Vector2();
       this.lastPickPoint = null;
@@ -395,7 +407,80 @@
       this._applyVisibility();
       this._applyClipping();
       this.frameAll({ resetView: true, animate: false });
+      if (!this.meshes.size && model.extentHint) this._frameEmpty(model.extentHint);
       this._emit("loaded", { meshes: this.meshes.size });
+    }
+    // An empty survey: frame the area it will cover, at the ground.
+    _frameEmpty(bbox) {
+      this.modelRoot.position.set(0, 0, 0);
+      this.modelRoot.updateMatrixWorld(true);
+      const box = new THREE.Box3(new THREE.Vector3(...bbox.min), new THREE.Vector3(...bbox.max));
+      const size = box.getSize(new THREE.Vector3());
+      this.modelSize = Math.max(size.x, size.y, size.z, 10);
+      this.camera.far = this.modelSize * 60;
+      this.camera.updateProjectionMatrix();
+      this.controls.maxRadius = this.modelSize * 12;
+      this._rebuildGrid();
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      this._moveCamera({ target: sphere.center, radius: this._fitRadius(sphere), ...VIEW_PRESETS.iso }, false);
+    }
+    /**
+     * Apply an edited model of the same source (a building survey being recorded) without a
+     * reload: the camera stays, and only elements whose geometry object changed are rebuilt.
+     */
+    async updateModel(model) {
+      if (!this.model) return this.loadModel(model);
+      const wasEmpty = this.meshes.size === 0;
+      this.model = model;
+      const keep = /* @__PURE__ */ new Set();
+      model.elements.forEach((el) => {
+        if (!el.geometry) return;
+        keep.add(el.expressId);
+        const old = this.meshes.get(el.expressId);
+        if (old && old.userData.geometrySource === el.geometry && old.userData.ifcClass === el.ifcClass) {
+          old.userData.storeyId = el.storey ? el.storey.expressId : null;
+          return;
+        }
+        if (old) this._disposeMesh(el.expressId);
+        const mesh = this._createMesh(el);
+        if (!mesh) return;
+        this.modelRoot.add(mesh);
+        this.meshes.set(el.expressId, mesh);
+      });
+      [...this.meshes.keys()].forEach((id) => {
+        if (!keep.has(id)) this._disposeMesh(id);
+      });
+      if (wasEmpty && this.meshes.size) this._fitSceneToModel();
+      if (this.showEdges) this.setShowEdges(true);
+      this._applyVisibility();
+      this._applyClipping();
+      this.setExplode(this.explodeFactor);
+      this._refreshAllMaterials();
+    }
+    _disposeMesh(id) {
+      const m = this.meshes.get(id);
+      if (!m) return;
+      m.geometry.dispose();
+      m.material.dispose();
+      if (m.userData.edgeGeo) m.userData.edgeGeo.dispose();
+      this.modelRoot.remove(m);
+      if (m.userData.edge) this.edgesGroup.remove(m.userData.edge);
+      this.meshes.delete(id);
+    }
+    // ----- Placement on a horizontal plane (building survey) -------------------
+    /** `{ y }` in model coordinates turns placement on: clicks emit 'place' with the model point, moves 'placeHover'. */
+    setPlacementMode(opts) {
+      this._placement = opts && Number.isFinite(opts.y) ? { y: opts.y } : null;
+      this.renderer.domElement.style.cursor = this._placement ? "crosshair" : "";
+    }
+    _planePoint(e) {
+      if (!this._placement) return null;
+      this._ndc(e);
+      this.modelRoot.updateMatrixWorld(true);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(this._placement.y + this.modelRoot.position.y));
+      const hit = new THREE.Vector3();
+      if (!this.raycaster.ray.intersectPlane(plane, hit)) return null;
+      return hit.sub(this.modelRoot.position).toArray();
     }
     _createMesh(el) {
       const g = el.geometry;
@@ -419,7 +504,7 @@
       else if (isGlass) baseOpacity = 0.4;
       const mat = new THREE.MeshLambertMaterial({ color: baseColor });
       const mesh = new THREE.Mesh(geom, mat);
-      mesh.userData = { expressId: el.expressId, ifcClass: el.ifcClass, storeyId: el.storey ? el.storey.expressId : null, baseColor, baseOpacity, isSpace, isGlass, isOpening };
+      mesh.userData = { expressId: el.expressId, ifcClass: el.ifcClass, storeyId: el.storey ? el.storey.expressId : null, baseColor, baseOpacity, isSpace, isGlass, isOpening, geometrySource: g };
       mesh.visible = !isOpening;
       this._refreshMaterial(mesh);
       return mesh;
@@ -455,7 +540,8 @@
       const box = this._robustBox(() => true);
       if (box.isEmpty()) return;
       const center = box.getCenter(new THREE.Vector3());
-      this.modelRoot.position.set(-center.x, -box.min.y, -center.z);
+      if (this.model && this.model.isSurvey) this.modelRoot.position.set(0, 0, 0);
+      else this.modelRoot.position.set(-center.x, -box.min.y, -center.z);
       this.modelRoot.updateMatrixWorld(true);
       const size = box.getSize(new THREE.Vector3());
       this.modelSize = Math.max(size.x, size.y, size.z, 1);

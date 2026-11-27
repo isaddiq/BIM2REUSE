@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const require = createRequire(import.meta.url);
 
-const CORE = ['core/schema.js', 'core/ifcloader.js', 'core/spatial.js', 'core/plan.js', 'core/zip.js', 'core/registry.js', 'core/project.js', 'core/modelstats.js', 'core/materials.js', 'core/passports.js', 'core/assessment.js', 'core/bank.js', 'core/matching.js', 'core/carbon.js', 'core/deconstruction.js', 'core/reports.js'];
+const CORE = ['core/schema.js', 'core/ifcloader.js', 'core/spatial.js', 'core/plan.js', 'core/zip.js', 'core/registry.js', 'core/project.js', 'core/modelstats.js', 'core/materials.js', 'core/passports.js', 'core/assessment.js', 'core/bank.js', 'core/matching.js', 'core/carbon.js', 'core/deconstruction.js', 'core/survey.js', 'core/reports.js'];
 
 let loaded = false;
 /** Evaluate the compiled core scripts once; they publish their API on globalThis (window). */

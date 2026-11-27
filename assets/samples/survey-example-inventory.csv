@@ -1,0 +1,25 @@
+type,name,floor,x,y,rotation,length,width,height,section,cross_section,cross_section_area,material,material_category,grade,density,condition,connection_type,accessibility,reuse_potential,inspected,inspection_date,contamination,quantity,provenance,notes
+Column,Column A1,Ground floor,0,0,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-14,none-known,1,verified,Base plate bolted; light surface rust
+Column,Column B1,Ground floor,6,0,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-14,none-known,1,verified,
+Column,Column C1,Ground floor,12,0,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-14,none-known,1,manual,
+Column,Column A2,Ground floor,0,-8,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,3,bolted,difficult,medium,done,2026-10-14,none-known,1,manual,Fire protection paint to be removed
+Column,Column B2,Ground floor,6,-8,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-14,none-known,1,manual,
+Column,Column C2,Ground floor,12,-8,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-14,none-known,1,manual,
+Beam,Beam A1-B1,Ground floor,3,0,0,6,0.15,0.3,profile,IPE 300,53.8,Steel S275,steel,S275,7850,4,bolted,easy,high,done,2026-10-14,none-known,1,drawing,Length from the 1974 structural drawings
+Beam,Beam B1-C1,Ground floor,9,0,0,6,0.15,0.3,profile,IPE 300,53.8,Steel S275,steel,S275,7850,4,bolted,easy,high,done,2026-10-14,none-known,1,drawing,
+Beam,Beam A2-B2,Ground floor,3,-8,0,6,0.15,0.3,profile,IPE 300,53.8,Steel S275,steel,S275,7850,4,bolted,easy,high,done,2026-10-14,none-known,1,drawing,
+Beam,Beam B2-C2,Ground floor,9,-8,0,6,0.15,0.3,profile,IPE 300,53.8,Steel S275,steel,S275,7850,3,bolted,easy,medium,done,2026-10-14,none-known,1,drawing,Notch at one end
+Slab,Ground slab,Ground floor,6,-4,0,12,8,0.2,,,,Concrete C25/30,concrete,C25/30,2400,3,cast-in-place,difficult,low,done,2026-10-14,none-known,1,drawing,Ground-bearing slab; recycle as aggregate
+Wall,North facade,Ground floor,6,-8,0,12,0.3,3,,,,Clay brick masonry,masonry,,,3,unknown,difficult,low,done,2026-10-14,none-known,1,manual,Cement mortar; bricks unlikely to separate cleanly
+Door,Entrance door,Ground floor,6,-8,0,1,0.1,2.1,,,,Timber,timber,,,3,mechanical,easy,medium,done,2026-10-14,none-known,1,manual,Solid oak door set
+Window,Window N1,Ground floor,2.5,-8,0,1.5,0.1,1.2,,,,Aluminium frame with double glazing,aluminium,,,2,mechanical,moderate,medium,,,,1,estimated,Size estimated from photographs
+Slab,Floor 1 slab,Floor 1,6,-4,0,12,8,0.2,,Hollow-core 200,,Precast concrete hollow-core planks,concrete,C40/50,,4,mechanical,moderate,high,done,2026-10-15,none-known,1,drawing,Planks on beam flanges; density to confirm with the manufacturer
+Column,Column A1 (F1),Floor 1,0,0,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-15,none-known,1,manual,
+Column,Column C1 (F1),Floor 1,12,0,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-15,none-known,1,manual,
+Column,Column A2 (F1),Floor 1,0,-8,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-15,none-known,1,manual,
+Column,Column C2 (F1),Floor 1,12,-8,0,0.2,0.2,3,profile,HEB 200,78.1,Steel S275,steel,S275,7850,4,bolted,moderate,high,done,2026-10-15,none-known,1,manual,
+Beam,Roof beam A,Floor 1,6,0,0,12,0.15,0.36,profile,IPE 360,72.7,Steel S275,steel,S275,7850,4,bolted,easy,high,done,2026-10-15,none-known,1,drawing,
+Beam,Roof beam B,Floor 1,6,-8,0,12,0.15,0.36,profile,IPE 360,72.7,Steel S275,steel,S275,7850,4,bolted,easy,high,done,2026-10-15,none-known,1,drawing,
+Wall,Partition P1,Floor 1,6,-4,90,8,0.1,3,,,,Timber stud C24 with plasterboard,timber,C24,,,mechanical,easy,medium,,,,1,manual,Condition not recorded yet
+Window,Window S,Floor 1,,,,1.5,0.1,1.2,,,,Aluminium frame with double glazing,aluminium,,,3,mechanical,moderate,medium,,,,2,imported,Position not known
+Other,Radiator,Floor 1,,,,,,,,,,Steel panel radiator,steel,,,3,mechanical,easy,medium,,,suspected,1,estimated,Possible lead paint; test before reuse

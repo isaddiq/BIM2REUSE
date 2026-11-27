@@ -25,13 +25,14 @@
     const pal = BANK_COLORS[theme] || BANK_COLORS.light;
     const byGid = /* @__PURE__ */ new Map();
     items.forEach((it) => {
-      if (it.globalId) byGid.set(it.globalId, it);
+      const r = bankItemRef(it);
+      if (r) byGid.set(r, it);
     });
     const colors = /* @__PURE__ */ new Map();
     const groups = /* @__PURE__ */ new Map();
     model.elements.forEach((el) => {
       if (!el.geometry || !isPhysicalElement(el)) return;
-      const it = el.globalId ? byGid.get(el.globalId) : null;
+      const it = componentIdOf(el) ? byGid.get(componentIdOf(el)) : null;
       const k = it ? it.availability : "none";
       colors.set(el.expressId, pal[k] || pal.none);
       if (!groups.has(k)) groups.set(k, []);
@@ -56,7 +57,7 @@
       if (component === "other") return;
       if (scope === "passports" && !p.stored) return;
       if (scope === "reuse") {
-        const r = assessment && assessment.byGid.get(p.globalId);
+        const r = assessment && assessment.byGid.get(p.componentId);
         if (!r || !["direct-reuse", "refurbishment"].includes(r.outcome)) return;
       }
       out.push({ passport: p, el, component });
@@ -71,7 +72,7 @@
       if (filter.materialCategory && (it.materialCategory || "unclassified") !== filter.materialCategory) return false;
       if (filter.source && (it.sourceBuilding || "\u2014") !== filter.source) return false;
       if (!q) return true;
-      return `${it.name} ${it.material || ""} ${it.globalId || ""} ${it.crossSection || ""} ${it.grade || ""} ${it.sourceBuilding || ""} ${it.id}`.toLowerCase().includes(q);
+      return `${it.name} ${it.material || ""} ${bankItemRef(it) || ""} ${it.crossSection || ""} ${it.grade || ""} ${it.sourceBuilding || ""} ${it.id}`.toLowerCase().includes(q);
     });
   }
   function readTextFile(file) {
@@ -118,7 +119,7 @@
     }, [candidates]);
     const picked = component ? candidates.filter((c) => c.component === component) : candidates;
     const inBank = useMemo(() => new Set(items.map((i) => i.id)), [items]);
-    const newCount = picked.filter((c) => !inBank.has(`bank-${c.passport.globalId}`)).length;
+    const newCount = picked.filter((c) => !inBank.has(`bank-${c.passport.componentId}`)).length;
     const stateCounts = useMemo(() => {
       const c = {};
       items.forEach((i) => {
@@ -187,7 +188,7 @@
       const on = filter.availability === id;
       setFilter((f) => ({ ...f, availability: on ? null : id }));
       if (on || !registry) return;
-      const ids = items.filter((i) => i.availability === id && i.globalId).map((i) => registry.expressIdOfGlobalId(i.globalId)).filter((x) => x != null);
+      const ids = items.filter((i) => i.availability === id && bankItemRef(i)).map((i) => registry.expressIdOfGlobalId(bankItemRef(i))).filter((x) => x != null);
       if (ids.length) onShowIds(ids);
     };
     return /* @__PURE__ */ React.createElement("aside", { className: "side left-side mod-side", "aria-label": "Material bank sources" }, /* @__PURE__ */ React.createElement("div", { className: "side-scroll" }, /* @__PURE__ */ React.createElement("section", { className: "mod-section" }, /* @__PURE__ */ React.createElement("h3", { className: "mod-h" }, "Bank"), /* @__PURE__ */ React.createElement("div", { className: "mini-kpis" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { className: "v mono" }, items.length.toLocaleString()), /* @__PURE__ */ React.createElement("span", { className: "k" }, "records")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { className: "v mono" }, units.toLocaleString()), /* @__PURE__ */ React.createElement("span", { className: "k" }, "units")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { className: "v mono" }, withLength.toLocaleString()), /* @__PURE__ */ React.createElement("span", { className: "k" }, "with length")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { className: "v mono" }, massKnown.length ? fmtNum(massKnown.reduce((a, i) => a + i.mass, 0) / 1e3) : "\u2014"), /* @__PURE__ */ React.createElement("span", { className: "k" }, "t known", massKnown.length && massKnown.length < items.length ? ` (${massKnown.length})` : "")))), /* @__PURE__ */ React.createElement("section", { className: "mod-section" }, /* @__PURE__ */ React.createElement(HeadTip, { title: "Add from this model", tip: "Each record copies the passport's dimensions, material, grade and condition, keeps its GlobalId, and starts as Potentially available until someone confirms recovery. Records already in the bank are kept as they are." }), !passports ? /* @__PURE__ */ React.createElement("div", { className: "mod-loading" }, /* @__PURE__ */ React.createElement("span", { className: "spinner sm" }), " Reading the model\u2026") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "seg seg-fill", role: "group", "aria-label": "Which components" }, BANK_SCOPES.map((s) => /* @__PURE__ */ React.createElement("button", { key: s.id, type: "button", "aria-pressed": scope === s.id, title: s.title, onClick: () => {
@@ -203,10 +204,10 @@
     const [sort, onSort] = useSort({ key: null, dir: 1 });
     const rows = useMemo(() => filterBankItems(items, filter), [items, filter]);
     const sel = viewerState.selectedIds;
-    const idOf = (it) => registry && it.globalId ? registry.expressIdOfGlobalId(it.globalId) : null;
+    const idOf = (it) => registry && bankItemRef(it) ? registry.expressIdOfGlobalId(bankItemRef(it)) : null;
     const len = (v, src) => v == null ? /* @__PURE__ */ React.createElement("span", { className: "qty-missing" }, "Missing") : /* @__PURE__ */ React.createElement("span", { className: "qty mono", "data-source": src }, fmtNum(v, 3));
     const cols = [
-      { key: "name", label: "Component", width: "minmax(150px, 1.4fr)", render: (it) => /* @__PURE__ */ React.createElement("span", { title: it.globalId || it.id }, it.name), sort: (it) => it.name },
+      { key: "name", label: "Component", width: "minmax(150px, 1.4fr)", render: (it) => /* @__PURE__ */ React.createElement("span", { title: bankItemRef(it) || it.id }, it.name), sort: (it) => it.name },
       { key: "component", label: "Type", width: 90, render: (it) => COMPONENT_LABEL[it.component] || it.component, sort: (it) => it.component },
       { key: "material", label: "Material", width: "minmax(110px, 1fr)", render: (it) => /* @__PURE__ */ React.createElement("span", { title: CATEGORY_LABEL[it.materialCategory] || "" }, it.material || /* @__PURE__ */ React.createElement("span", { className: "qty-missing" }, "Missing")), sort: (it) => it.material },
       { key: "length", label: "Length m", width: 82, align: "end", render: (it) => len(it.length, it.lengthSource), sort: (it) => it.length },
@@ -296,8 +297,8 @@
     }
     const now = () => (/* @__PURE__ */ new Date()).toISOString();
     const set = (patch) => setItems((list) => list.map((i) => i.id === item.id ? { ...i, ...patch, editedAt: now() } : i));
-    const expressId = registry && item.globalId ? registry.expressIdOfGlobalId(item.globalId) : null;
-    const passport = item.globalId && passports ? passports.get(item.globalId) : null;
+    const expressId = registry && bankItemRef(item) ? registry.expressIdOfGlobalId(bankItemRef(item)) : null;
+    const passport = bankItemRef(item) && passports ? passports.get(bankItemRef(item)) : null;
     const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
     const remove = async () => {
       const ok = await confirm({ title: "Remove this record?", message: `${item.name} is removed from the bank. Its passport and the model are not changed.`, confirm: "Remove", danger: true });
@@ -306,7 +307,7 @@
         toast({ kind: "ok", msg: "Record removed" });
       }
     };
-    return /* @__PURE__ */ React.createElement("aside", { className: "side right-side", "aria-label": "Bank record" }, /* @__PURE__ */ React.createElement("header", { className: "insp-header" }, /* @__PURE__ */ React.createElement("div", { className: "insp-class" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, COMPONENT_LABEL[item.component] || item.component), item.ifcClass ? /* @__PURE__ */ React.createElement("span", { className: "mono muted" }, " \xB7 ", item.ifcClass) : null), /* @__PURE__ */ React.createElement("h2", { className: "insp-name" }, item.name), /* @__PURE__ */ React.createElement("div", { className: "pp-meta muted" }, /* @__PURE__ */ React.createElement("span", null, item.sourceBuilding || "Unknown source building"), /* @__PURE__ */ React.createElement("span", null, BANK_ORIGIN_LABEL[item.origin] || item.origin, item.importedFrom ? `: ${item.importedFrom}` : ""), item.globalId && /* @__PURE__ */ React.createElement("span", { className: "mono", title: "IFC GlobalId" }, item.globalId)), /* @__PURE__ */ React.createElement("div", { className: "insp-actions" }, expressId != null && /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", onClick: () => {
+    return /* @__PURE__ */ React.createElement("aside", { className: "side right-side", "aria-label": "Bank record" }, /* @__PURE__ */ React.createElement("header", { className: "insp-header" }, /* @__PURE__ */ React.createElement("div", { className: "insp-class" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, COMPONENT_LABEL[item.component] || item.component), item.ifcClass ? /* @__PURE__ */ React.createElement("span", { className: "mono muted" }, " \xB7 ", item.ifcClass) : null), /* @__PURE__ */ React.createElement("h2", { className: "insp-name" }, item.name), /* @__PURE__ */ React.createElement("div", { className: "pp-meta muted" }, /* @__PURE__ */ React.createElement("span", null, item.sourceBuilding || "Unknown source building"), /* @__PURE__ */ React.createElement("span", null, BANK_ORIGIN_LABEL[item.origin] || item.origin, item.importedFrom ? `: ${item.importedFrom}` : ""), item.globalId && /* @__PURE__ */ React.createElement("span", { className: "mono", title: "IFC GlobalId" }, item.globalId), !item.globalId && item.componentId && /* @__PURE__ */ React.createElement("span", { className: "mono", title: "Survey component ID (no IFC GlobalId)" }, item.componentId)), /* @__PURE__ */ React.createElement("div", { className: "insp-actions" }, expressId != null && /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", onClick: () => {
       dispatch({ type: "select", ids: [expressId] });
       onZoomTo([expressId]);
     } }, /* @__PURE__ */ React.createElement(Icons.Focus, { size: 14 }), " Show in 3D"), passport && /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", onClick: () => {

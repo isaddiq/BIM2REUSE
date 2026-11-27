@@ -140,6 +140,7 @@
       else if ((el.name || "").toLowerCase().includes(lower)) m = `Name ${el.name}`;
       else if ((el.longName || "").toLowerCase().includes(lower)) m = `Long name ${el.longName}`;
       else if ((el.globalId || "").toLowerCase().includes(lower)) m = `GlobalId ${el.globalId}`;
+      else if ((el.componentId || "").toLowerCase().includes(lower)) m = `Component ID ${el.componentId}`;
       else if ((el.objectType || "").toLowerCase().includes(lower)) m = `Object type ${el.objectType}`;
       else if ((el.tag || "").toLowerCase().includes(lower)) m = `Tag ${el.tag}`;
       else if (el.storey && (el.storey.name || "").toLowerCase().includes(lower)) m = `Storey ${el.storey.name}`;
@@ -245,7 +246,8 @@
       colorModes,
       modeColors,
       modeLegend,
-      modeOpacity
+      modeOpacity,
+      toolbar
     } = props;
     const hostRef = useRef(null);
     const [ready, setReady] = useState(false);
@@ -294,6 +296,14 @@
         return;
       }
       let cancelled = false;
+      if (v2.model && model.sourceKey && v2.model.sourceKey === model.sourceKey) {
+        v2.updateModel(model).then(() => {
+          if (!cancelled) setModelBounds(v2.getModelBounds());
+        });
+        return () => {
+          cancelled = true;
+        };
+      }
       setModelBounds(null);
       v2.loadModel(model).then(() => {
         if (cancelled) return;
@@ -374,7 +384,7 @@
     const hostRect = (_a = hostRef.current) == null ? void 0 : _a.getBoundingClientRect();
     const toolHint = measureMode ? "Click two points to measure. Esc to stop." : annoMode ? "Click an element to pin an issue. Esc to stop." : planCut.enabled ? "Plan cut: geometry above the level is hidden." : null;
     const sel = viewerState.selectedIds.size > 0;
-    return /* @__PURE__ */ React.createElement("div", { className: "viewer-region", "data-layout": model ? layout : "3d" }, /* @__PURE__ */ React.createElement("div", { className: "viewer-wrap", ref: hostRef }, model && /* @__PURE__ */ React.createElement("div", { className: "hud" }, /* @__PURE__ */ React.createElement("div", { className: "viewbar", role: "toolbar", "aria-label": "View" }, /* @__PURE__ */ React.createElement("label", { className: "quick-select" }, /* @__PURE__ */ React.createElement(Icons.Layers, { size: 15 }), /* @__PURE__ */ React.createElement("select", { "aria-label": "Level", value: levelId, onChange: (e) => onLevelChange(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "all" }, "All levels"), model.storeys.map((s) => /* @__PURE__ */ React.createElement("option", { key: s.expressId, value: s.expressId }, s.name || s.longName || `Storey #${s.expressId}`)))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "chip-btn", "aria-pressed": planCut.enabled, disabled: levelId === "all", title: levelId === "all" ? "Choose a level to cut a floor plan" : "Cut the model 1.2 m above the floor", onClick: togglePlanCut }, /* @__PURE__ */ React.createElement(Icons.PlanCut, { size: 15 }), /* @__PURE__ */ React.createElement("span", null, "Cut")), /* @__PURE__ */ React.createElement("span", { className: "quick-sep" }), layoutSwitch, /* @__PURE__ */ React.createElement("span", { className: "quick-sep" }), /* @__PURE__ */ React.createElement(ColorModeSwitch, { value: colorMode, onChange: setColorMode, modes: colorModes })), modeLegend && /* @__PURE__ */ React.createElement(ModeLegend, { legend: modeLegend, viewerState, dispatch, onZoomTo: (ids) => v == null ? void 0 : v.frameElements(ids) }), /* @__PURE__ */ React.createElement(NavCubeHost, { viewerRef, ready, theme }), (toolHint || hint) && /* @__PURE__ */ React.createElement("div", { className: "status-chip", role: "status" }, /* @__PURE__ */ React.createElement("span", { className: "dot", "data-tone": "accent" }), toolHint || hint), sectionEnabled && modelBounds && sectionBox && /* @__PURE__ */ React.createElement(SectionBoxControls, { box: sectionBox, bounds: modelBounds, onChange: setSectionBox, onReset: () => setSectionBox({ ...modelBounds }), onClose: toggleSection }), viewerState.measurements.map((m) => {
+    return /* @__PURE__ */ React.createElement("div", { className: "viewer-region", "data-layout": model ? layout : "3d" }, /* @__PURE__ */ React.createElement("div", { className: "viewer-wrap", ref: hostRef }, model && /* @__PURE__ */ React.createElement("div", { className: "hud" }, /* @__PURE__ */ React.createElement("div", { className: "viewbar", role: "toolbar", "aria-label": "View" }, /* @__PURE__ */ React.createElement("label", { className: "quick-select" }, /* @__PURE__ */ React.createElement(Icons.Layers, { size: 15 }), /* @__PURE__ */ React.createElement("select", { "aria-label": "Level", value: levelId, onChange: (e) => onLevelChange(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "all" }, "All levels"), model.storeys.map((s) => /* @__PURE__ */ React.createElement("option", { key: s.expressId, value: s.expressId }, s.name || s.longName || `Storey #${s.expressId}`)))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "chip-btn", "aria-pressed": planCut.enabled, disabled: levelId === "all", title: levelId === "all" ? "Choose a level to cut a floor plan" : "Cut the model 1.2 m above the floor", onClick: togglePlanCut }, /* @__PURE__ */ React.createElement(Icons.PlanCut, { size: 15 }), /* @__PURE__ */ React.createElement("span", null, "Cut")), /* @__PURE__ */ React.createElement("span", { className: "quick-sep" }), layoutSwitch, /* @__PURE__ */ React.createElement("span", { className: "quick-sep" }), /* @__PURE__ */ React.createElement(ColorModeSwitch, { value: colorMode, onChange: setColorMode, modes: colorModes })), toolbar && /* @__PURE__ */ React.createElement("div", { className: "hud-tools" }, toolbar), modeLegend && /* @__PURE__ */ React.createElement(ModeLegend, { legend: modeLegend, viewerState, dispatch, onZoomTo: (ids) => v == null ? void 0 : v.frameElements(ids) }), /* @__PURE__ */ React.createElement(NavCubeHost, { viewerRef, ready, theme }), (toolHint || hint) && /* @__PURE__ */ React.createElement("div", { className: "status-chip", role: "status" }, /* @__PURE__ */ React.createElement("span", { className: "dot", "data-tone": "accent" }), toolHint || hint), sectionEnabled && modelBounds && sectionBox && /* @__PURE__ */ React.createElement(SectionBoxControls, { box: sectionBox, bounds: modelBounds, onChange: setSectionBox, onReset: () => setSectionBox({ ...modelBounds }), onClose: toggleSection }), viewerState.measurements.map((m) => {
       const mid = m.a.map((x, i) => (x + m.b[i]) / 2);
       const s = project(mid);
       return s.behind ? null : /* @__PURE__ */ React.createElement("div", { key: m.id, className: "measure-label mono", style: { left: s.x, top: s.y } }, m.distance.toFixed(2), " m");

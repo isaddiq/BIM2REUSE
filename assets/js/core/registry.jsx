@@ -10,12 +10,24 @@
  *
  * Reopening a project re-parses its IFC file and maps stored keys back to express IDs.
  * Because GlobalIds survive model revisions, data also carries over to a revised file.
+ *
+ * Components recorded in a building survey (Workflow 2) have no GlobalId. They carry a
+ * persistent internal component ID instead (see core/survey.jsx), and the registry treats it
+ * like a GlobalId: key = `${modelKey}:${componentId}`, always stable. componentIdOf(el) is the
+ * one identity every module keys its records on: the GlobalId of an IFC element, the
+ * component ID of a surveyed one. GlobalIds are never invented for surveyed components.
  * No DOM or Three.js here.
  */
 
+/** The identity module records are keyed on: IFC GlobalId, or the survey component ID. */
+function componentIdOf(el) {
+  if (!el) return null;
+  return el.componentId || el.globalId || null;
+}
+
 function buildElementRegistry(model, modelKey = 'source') {
   const counts = new Map();
-  model.elements.forEach(el => { if (el.globalId) counts.set(el.globalId, (counts.get(el.globalId) || 0) + 1); });
+  model.elements.forEach(el => { const c = componentIdOf(el); if (c) counts.set(c, (counts.get(c) || 0) + 1); });
 
   const byKey = new Map();
   const keyById = new Map();
@@ -23,12 +35,12 @@ function buildElementRegistry(model, modelKey = 'source') {
   const duplicateGlobalIds = [];
   let unstable = 0;
   model.elements.forEach(el => {
-    const gid = el.globalId || null;
+    const gid = componentIdOf(el);
     const unique = !!gid && counts.get(gid) === 1;
     if (gid && !unique && !duplicateGlobalIds.includes(gid)) duplicateGlobalIds.push(gid);
     const key = unique ? `${modelKey}:${gid}` : `${modelKey}:#${el.expressId}`;
     if (!unique) unstable++;
-    const rec = { key, modelKey, expressId: el.expressId, globalId: gid, stable: unique, ifcClass: el.ifcClass };
+    const rec = { key, modelKey, expressId: el.expressId, globalId: el.globalId || null, componentId: gid, survey: !!el.survey, stable: unique, ifcClass: el.ifcClass };
     byKey.set(key, rec);
     keyById.set(el.expressId, key);
     if (unique) idByGlobalId.set(gid, el.expressId);
@@ -38,8 +50,8 @@ function buildElementRegistry(model, modelKey = 'source') {
     const key = keyById.get(expressId);
     if (!key) return null;
     const rec = byKey.get(key);
-    // Store the GlobalId where it is unique; fall back to the express ID otherwise.
-    return rec.stable ? rec.globalId : `#${rec.expressId}`;
+    // Store the GlobalId (or survey component ID) where it is unique; fall back to the express ID otherwise.
+    return rec.stable ? rec.componentId : `#${rec.expressId}`;
   };
   const fromRef = (ref) => {
     if (ref == null) return null;
@@ -60,7 +72,9 @@ function buildElementRegistry(model, modelKey = 'source') {
     get: (key) => byKey.get(key) || null,
     keyOf: (expressId) => keyById.get(expressId) || null,
     recordOf: (expressId) => byKey.get(keyById.get(expressId)) || null,
+    /** Express ID of a component, by IFC GlobalId or survey component ID. */
     expressIdOfGlobalId: (gid) => (idByGlobalId.has(gid) ? idByGlobalId.get(gid) : null),
+    expressIdOfComponent: (cid) => (idByGlobalId.has(cid) ? idByGlobalId.get(cid) : null),
     /** Express IDs → portable references (GlobalId, or "#expressId" when no unique GlobalId exists). */
     toRefs: (ids) => [...ids].map(toRef).filter(r => r != null),
     /** Portable references → express IDs in this model, plus the references that no longer resolve. */
@@ -78,4 +92,4 @@ function buildElementRegistry(model, modelKey = 'source') {
   };
 }
 
-Object.assign(window, { buildElementRegistry });
+Object.assign(window, { buildElementRegistry, componentIdOf });

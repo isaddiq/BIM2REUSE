@@ -15,6 +15,12 @@
       downloadable: true
     }
   ];
+  const DEMO_SURVEY = {
+    name: "Former Post Office (demo survey)",
+    file: "demo-survey.bim2reuse.zip",
+    url: "assets/samples/demo-survey.bim2reuse.zip",
+    facts: "A fictional two-storey 1968 steel-frame building without a BIM model: 52 surveyed components with dimensions, materials, condition, connections and reuse potential, two scaled tracing plans, a structural section, a condition report, hazardous materials screening, a material test certificate and two passports approved for reuse."
+  };
   const SOURCE_REPO_URL = "https://github.com/isaddiq/BIM2Reuse";
   const AUTHOR_URL = "https://isaddiq.github.io/";
   const EMPTY_RECORDS = {};
@@ -70,12 +76,13 @@
   function viewerSignature(v) {
     return JSON.stringify([v.savedViews, v.selectionSets, v.annotations, v.measurements]);
   }
-  function dataSignature(viewer, modules) {
-    return `${viewerSignature(viewer)}|${JSON.stringify(modules || {})}`;
+  function dataSignature(viewer, modules, survey) {
+    return `${viewerSignature(viewer)}|${JSON.stringify(modules || {})}|${JSON.stringify(survey || null)}`;
   }
-  const WORKSPACE_MODULES = ["viewer", "materials", "passports", "assessment", "deconstruction", "bank", "matching"];
-  const TABLE_MODULES = ["materials", "assessment", "deconstruction", "bank", "matching"];
-  const MODULE_MODE = { materials: "material", passports: "passport", assessment: "reuse", deconstruction: "stage", bank: "bank", matching: "match" };
+  const WORKSPACE_MODULES = ["viewer", "survey", "materials", "passports", "assessment", "deconstruction", "bank", "matching"];
+  const TABLE_MODULES = ["survey", "materials", "assessment", "deconstruction", "bank", "matching"];
+  const MODULE_MODE = { survey: "survey", materials: "material", passports: "passport", assessment: "reuse", deconstruction: "stage", bank: "bank", matching: "match" };
+  let ifcParseCount = 0;
   const INVENTORY_MODES = ["material", "passport", "reuse"];
   const NO_MODE = { colors: null, legend: null };
   const NO_BOTTOM_MODULES = ["passports"];
@@ -101,7 +108,8 @@
       theme,
       onToggleTheme,
       onLoadSample,
-      onHome
+      onHome,
+      onOpenDemo
     } = props;
     const [q, setQ] = useState("");
     const [focused, setFocused] = useState(false);
@@ -160,7 +168,10 @@
     } }), /* @__PURE__ */ React.createElement(IconButton, { icon: theme === "dark" ? Icons.Sun : Icons.Moon, label: theme === "dark" ? "Use light theme" : "Use dark theme", onClick: onToggleTheme }), /* @__PURE__ */ React.createElement("div", { className: "menu-anchor", ref: menuRef }, /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.More, label: "More", "aria-haspopup": "menu", "aria-expanded": menu, onClick: () => setMenu((v) => !v) }), menu && /* @__PURE__ */ React.createElement("div", { className: "menu", role: "menu" }, SAMPLES.map((smp) => /* @__PURE__ */ React.createElement("button", { key: smp.id, type: "button", role: "menuitem", onClick: () => {
       setMenu(false);
       onLoadSample(smp);
-    } }, /* @__PURE__ */ React.createElement(Icons.Cube, { size: 15 }), " Open sample: ", smp.name)), /* @__PURE__ */ React.createElement("div", { className: "menu-sep" }), /* @__PURE__ */ React.createElement("a", { role: "menuitem", href: SOURCE_REPO_URL, target: "_blank", rel: "noopener noreferrer" }, /* @__PURE__ */ React.createElement(Icons.Github, { size: 15 }), " Source code ", /* @__PURE__ */ React.createElement(Icons.External, { size: 12, className: "trail" })), /* @__PURE__ */ React.createElement("a", { role: "menuitem", href: AUTHOR_URL, target: "_blank", rel: "noopener noreferrer" }, /* @__PURE__ */ React.createElement(Icons.Globe, { size: 15 }), " Author ", /* @__PURE__ */ React.createElement(Icons.External, { size: 12, className: "trail" }))))));
+    } }, /* @__PURE__ */ React.createElement(Icons.Cube, { size: 15 }), " Open sample: ", smp.name)), /* @__PURE__ */ React.createElement("button", { type: "button", role: "menuitem", onClick: () => {
+      setMenu(false);
+      onOpenDemo();
+    } }, /* @__PURE__ */ React.createElement(Icons.Building, { size: 15 }), " Open demo: building survey"), /* @__PURE__ */ React.createElement("div", { className: "menu-sep" }), /* @__PURE__ */ React.createElement("a", { role: "menuitem", href: SOURCE_REPO_URL, target: "_blank", rel: "noopener noreferrer" }, /* @__PURE__ */ React.createElement(Icons.Github, { size: 15 }), " Source code ", /* @__PURE__ */ React.createElement(Icons.External, { size: 12, className: "trail" })), /* @__PURE__ */ React.createElement("a", { role: "menuitem", href: AUTHOR_URL, target: "_blank", rel: "noopener noreferrer" }, /* @__PURE__ */ React.createElement(Icons.Globe, { size: 15 }), " Author ", /* @__PURE__ */ React.createElement(Icons.External, { size: 12, className: "trail" }))))));
   }
   function SaveAsDialog({ initial, onClose, onSave }) {
     const [name, setName] = useState(initial);
@@ -183,13 +194,14 @@
     const [saved, setSaved] = useState(null);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
-    const [model, setModel] = useState(null);
+    const [ifcModel, setModel] = useState(null);
     const [modelSha, setModelSha] = useState(null);
     const [secondaryReady, setSecondaryReady] = useState(false);
     const [loading, setLoading] = useState(null);
     const [recent, setRecent] = useState(null);
     const [storeError, setStoreError] = useState(null);
     const filesRef = useRef(/* @__PURE__ */ new Map());
+    const surveyUiRef = useRef(null);
     const [module, setModuleState] = useState(moduleFromHash);
     const [modal, setModal] = useState(null);
     const [confirmReq, setConfirmReq] = useState(null);
@@ -228,7 +240,14 @@
     const bodyRef = useRef(null);
     const searchRef = useRef(null);
     const modelRef = useRef(null);
+    const survey = project.survey || null;
+    const model = useMemo(() => {
+      if (!survey) return ifcModel;
+      return ifcModel ? combineModels(ifcModel, survey) : buildSurveyModel(survey, { sourceKey: `survey:${project.id}` });
+    }, [ifcModel, survey, project.id]);
+    const modelReady = secondaryReady || !!(model && model.isSurvey);
     modelRef.current = model;
+    const setSurvey = useCallback((fn) => setProject((p) => ({ ...p, survey: typeof fn === "function" ? fn(p.survey) : fn })), []);
     useEffect(() => {
       document.documentElement.setAttribute("data-theme", theme);
       writeStorage(STORAGE.theme, themePref);
@@ -319,14 +338,14 @@
         return null;
       }
     }, [model]);
-    const summary = useMemo(() => model ? summarizeModel(model) : null, [model, secondaryReady]);
-    const sig = dataSignature(viewerState, project.modules);
+    const summary = useMemo(() => model ? summarizeModel(model) : null, [model, modelReady]);
+    const sig = dataSignature(viewerState, project.modules, project.survey);
     const matSettings = project.modules && project.modules.materials || EMPTY_MATERIAL_SETTINGS;
     const setMatSettings = useCallback((fn) => setProject((p) => {
       const cur = p.modules && p.modules.materials || EMPTY_MATERIAL_SETTINGS;
       return { ...p, modules: { ...p.modules, materials: typeof fn === "function" ? fn(cur) : fn } };
     }), []);
-    const inventoryState = useInventory(model, secondaryReady, matSettings);
+    const inventoryState = useInventory(model, modelReady, matSettings);
     const inventory = inventoryState.inventory;
     const materialMode = useMemo(() => materialModeData(inventory, theme), [inventory, theme]);
     const colorModes = useMemo(() => [
@@ -336,11 +355,12 @@
       ...inventory ? [{ id: "reuse", label: "Reuse", title: "Colour by reuse screening outcome" }] : [],
       ...model ? [{ id: "bank", label: "Bank", title: "Colour by material bank availability" }] : [],
       ...model ? [{ id: "match", label: "Match", title: "Colour by the last reuse matching run" }] : [],
-      ...model ? [{ id: "stage", label: "Stage", title: "Colour by deconstruction stage" }] : []
-    ].map((m) => m.id === MODULE_MODE[module] ? { ...m, pinned: true } : m), [inventory, model, module]);
+      ...model ? [{ id: "stage", label: "Stage", title: "Colour by deconstruction stage" }] : [],
+      ...model && survey ? [{ id: "survey", label: "Survey", title: "Colour surveyed components by missing, estimated and verified information" }] : []
+    ].map((m) => m.id === MODULE_MODE[module] ? { ...m, pinned: true } : m), [inventory, model, module, !!survey]);
     useEffect(() => {
-      if (INVENTORY_MODES.includes(colorMode) && !inventory || ["bank", "match", "stage"].includes(colorMode) && !model) setColorMode("normal");
-    }, [inventory, model, colorMode]);
+      if (INVENTORY_MODES.includes(colorMode) && !inventory || ["bank", "match", "stage"].includes(colorMode) && !model || colorMode === "survey" && !survey) setColorMode("normal");
+    }, [inventory, model, colorMode, !!survey]);
     const passportRecords = project.modules && project.modules.passports && project.modules.passports.records || EMPTY_RECORDS;
     const setPassportRecord = useCallback((gid, fn) => setProject((p) => {
       const recs = p.modules && p.modules.passports && p.modules.passports.records || {};
@@ -386,7 +406,7 @@
       const cur = normaliseDecon(p.modules && p.modules.deconstruction);
       return { ...p, modules: { ...p.modules, deconstruction: typeof fn === "function" ? fn(cur) : fn } };
     }), []);
-    const deconGids = useMemo(() => model ? new Set(deconTasks(model).map((el) => el.globalId)) : /* @__PURE__ */ new Set(), [model]);
+    const deconGids = useMemo(() => model ? new Set(deconTasks(model).map((el) => componentIdOf(el))) : /* @__PURE__ */ new Set(), [model]);
     const deconAnalysis = useMemo(() => {
       if (!model) return null;
       const durations = {};
@@ -419,12 +439,18 @@
       if (!passports || !model || viewerState.selectedIds.size === 0) return null;
       const id = [...viewerState.selectedIds][viewerState.selectedIds.size - 1];
       const el = model.byId.get(id);
-      return el && el.globalId ? passports.get(el.globalId) || null : null;
+      return el && componentIdOf(el) ? passports.get(componentIdOf(el)) || null : null;
     }, [passports, model, viewerState.selectedIds]);
     const addFile = useCallback(async (bytes) => {
       const sha = await sha256Hex(bytes);
       filesRef.current.set(sha, bytes);
       return sha;
+    }, []);
+    const getFileBytes = useCallback(async (sha) => {
+      let bytes = filesRef.current.get(sha);
+      if (!bytes) bytes = await ProjectStore.getFile(sha).catch(() => null);
+      if (bytes) filesRef.current.set(sha, bytes);
+      return bytes || null;
     }, []);
     const openFile = useCallback(async (ev) => {
       let bytes = filesRef.current.get(ev.sha256);
@@ -447,7 +473,7 @@
       if (module === "deconstruction" && model && deconAnalysis && playStage > 0) {
         const m2 = /* @__PURE__ */ new Map();
         model.elements.forEach((el) => {
-          const s = el.globalId ? deconAnalysis.stage.get(el.globalId) : null;
+          const s = componentIdOf(el) ? deconAnalysis.stage.get(componentIdOf(el)) : null;
           if (el.geometry && s && s <= playStage) m2.set(el.expressId, 0.06);
         });
         return m2;
@@ -460,7 +486,9 @@
       return m;
     }, [module, model, selectedPassport, deconAnalysis, playStage]);
     const dirty = !!model && (!saved || saved.sig !== sig || saved.name !== project.name || saved.sha !== modelSha);
+    const surveyMode = useMemo(() => colorMode === "survey" ? surveyModeData(model, theme) : NO_MODE, [colorMode, model, theme]);
     const modeColors = useMemo(() => {
+      if (colorMode === "survey") return surveyMode.colors;
       if (colorMode === "material") return materialMode.colors;
       if (colorMode === "passport") return passportMode.colors;
       if (colorMode === "reuse") return reuseMode.colors;
@@ -472,8 +500,9 @@
       const m = /* @__PURE__ */ new Map();
       summary.groups.forEach((g) => g.ids.forEach((id) => m.set(id, pal[g.id] || pal.other)));
       return m;
-    }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode]);
+    }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode, surveyMode]);
     const modeLegend = useMemo(() => {
+      if (colorMode === "survey") return surveyMode.legend;
       if (colorMode === "material") return materialMode.legend;
       if (colorMode === "passport") return passportMode.legend;
       if (colorMode === "reuse") return reuseMode.legend;
@@ -487,7 +516,7 @@
         items: summary.groups.filter((g) => g.withGeometry).map((g) => ({ id: g.id, label: g.name, color: pal[g.id] || pal.other, ids: g.ids })),
         note: "Click a category to isolate it. Openings and room volumes are not coloured."
       };
-    }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode]);
+    }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode, surveyMode]);
     const resetSession = useCallback(() => {
       var _a;
       dispatch({ type: "reset" });
@@ -535,11 +564,12 @@
           }),
           sha256Hex(bytes)
         ]);
-        const keep = restore ? restore.__files || /* @__PURE__ */ new Map() : new Map([...filesRef.current].filter(([k]) => projectFileRefs(project).some((r) => r.kind === "evidence" && r.sha256 === k)));
+        const keep = restore ? restore.__files || /* @__PURE__ */ new Map() : new Map([...filesRef.current].filter(([k]) => projectFileRefs(project).some((r) => r.kind !== "model" && r.sha256 === k)));
         filesRef.current = new Map([...keep, [sha, bytes]]);
-        const reg = buildElementRegistry(m, "source");
+        m.sourceKey = `ifc:${sha}:${++ifcParseCount}`;
         const base = restore || project;
-        const nextProject = { ...base, models: [describeModel(m, sha, "source")] };
+        const reg = buildElementRegistry(base.survey ? combineModels(m, base.survey) : m, "source");
+        const nextProject = { ...base, models: [describeModel(m, sha, "source")], workflow: base.workflow || "ifc" };
         setProject(nextProject);
         setModelSha(sha);
         setModel(m);
@@ -549,7 +579,7 @@
           const restored = restoreViewerData(data, reg);
           dispatch({ type: "restore-data", data: restored });
           if (restored.missing) toast({ kind: "warn", msg: `${plural(restored.missing, "element reference")} not found in this model`, sub: "Views, sets or issues that pointed to them were kept without those elements." });
-          setSaved(restoreSaved ? { sig: dataSignature(restored, nextProject.modules), name: nextProject.name, sha, at: new Date(nextProject.updatedAt), auto: false } : null);
+          setSaved(restoreSaved ? { sig: dataSignature(restored, nextProject.modules, nextProject.survey), name: nextProject.name, sha, at: new Date(nextProject.updatedAt), auto: false } : null);
         } else {
           setSaved(null);
         }
@@ -572,17 +602,24 @@
         toast({ kind: "error", msg: `${file.name} is not an .ifc file`, sub: "Choose a STEP-encoded .ifc file (IFC2x3, IFC4 or IFC4.3)." });
         return;
       }
-      if (modelRef.current) {
+      if (modelRef.current && project.survey && !ifcModel) {
+        const ok = await confirm({
+          title: "Add an IFC model to this survey?",
+          message: `${file.name} becomes the source model of \u201C${project.name}\u201D. The building survey and all its records are kept: surveyed components appear next to the IFC elements, and you can link each one to the IFC element it is in Building Survey. To keep the survey on its own, choose New project first.`,
+          confirm: "Add IFC model"
+        });
+        if (!ok) return;
+      } else if (ifcModel) {
         const ok = await confirm({
           title: "Replace the source model?",
-          message: `${file.name} will replace ${modelRef.current.fileName} in \u201C${project.name}\u201D. Saved views, selection sets and issues are carried over for elements whose GlobalId also exists in the new file. To keep the current project unchanged, choose New project first.`,
+          message: `${file.name} will replace ${ifcModel.fileName} in \u201C${project.name}\u201D. Saved views, selection sets and issues are carried over for elements whose GlobalId also exists in the new file.${project.survey ? " The building survey is kept." : ""} To keep the current project unchanged, choose New project first.`,
           confirm: "Replace model"
         });
         if (!ok) return;
       }
       const bytes = new Uint8Array(await file.arrayBuffer());
       await openModelBytes(bytes, file.name, { source });
-    }, [toast, confirm, openModelBytes, project.name]);
+    }, [toast, confirm, openModelBytes, project.name, project.survey, ifcModel]);
     const loadSample = useCallback(async (sample = SAMPLES[0]) => {
       try {
         if (!sample.bundled) setLoading({ fileName: sample.file, progress: 0.01, phase: "Downloading from the source" });
@@ -649,6 +686,46 @@
       setColorMode("normal");
       setModule("overview");
     }, [discardOk, resetSession, setModule]);
+    const startSurveyProject = useCallback(async (opts) => {
+      var _a, _b;
+      if (!await discardOk("Starting a new project discards them.")) return false;
+      (_b = (_a = modelRef.current) == null ? void 0 : _a.close) == null ? void 0 : _b.call(_a);
+      setModel(null);
+      setModelSha(null);
+      resetSession();
+      setLog([]);
+      filesRef.current = /* @__PURE__ */ new Map();
+      setProject(createSurveyProject(opts.name, { building: opts.building, floors: opts.floors, basements: opts.basements, floorHeight: opts.floorHeight }));
+      setSaved(null);
+      setSaveError(null);
+      setColorMode("normal");
+      setModal(null);
+      setModule("survey");
+      toast({ kind: "ok", msg: `Started the survey of \u201C${opts.name}\u201D`, sub: "Choose a component type in the 3D view and click to place it, or import an inventory." });
+      return true;
+    }, [discardOk, resetSession, setModule, toast]);
+    const addSurveyToProject = useCallback((opts) => {
+      setProject((p) => ({ ...p, survey: createSurvey({ building: opts.building, floors: opts.floors, basements: opts.basements, floorHeight: opts.floorHeight }) }));
+      setModal(null);
+      setModule("survey");
+      toast({ kind: "ok", msg: "Building survey added", sub: "Surveyed components are shown next to the IFC elements." });
+    }, [setModule, toast]);
+    const openSurveyProject = useCallback((p, { files = /* @__PURE__ */ new Map(), restoreSaved = false } = {}) => {
+      var _a, _b;
+      (_b = (_a = modelRef.current) == null ? void 0 : _a.close) == null ? void 0 : _b.call(_a);
+      setModel(null);
+      setModelSha(null);
+      resetSession();
+      setLog([]);
+      filesRef.current = files;
+      setProject(p);
+      const reg = buildElementRegistry(buildSurveyModel(p.survey, { sourceKey: `survey:${p.id}` }), "source");
+      const restored = restoreViewerData(p.viewer, reg);
+      dispatch({ type: "restore-data", data: restored });
+      setSaved(restoreSaved ? { sig: dataSignature(restored, p.modules, p.survey), name: p.name, sha: null, at: new Date(p.updatedAt), auto: false } : null);
+      setSaveError(null);
+      toast({ kind: "ok", msg: `Opened \u201C${p.name}\u201D`, sub: `Building survey: ${plural(p.survey.components.length, "component")} on ${plural(p.survey.floors.length, "floor")}` });
+    }, [resetSession, toast]);
     const openStoredProject = useCallback(async (id) => {
       if (!await discardOk("Opening another project discards them.")) return;
       setModal(null);
@@ -657,6 +734,11 @@
         if (!stored) throw new Error("The project is no longer in the local store.");
         const p = validateProject(stored);
         const src = p.models[0];
+        if (!src && p.survey) {
+          openSurveyProject(p, { restoreSaved: true });
+          setModule("overview");
+          return;
+        }
         if (!src) throw new Error("The project has no source model.");
         const bytes = await ProjectStore.getFile(src.sha256);
         if (!bytes) throw new Error(`The IFC file ${src.fileName} is missing from the local store. Import it again to continue.`);
@@ -664,16 +746,23 @@
       } catch (err) {
         toast({ kind: "error", msg: "Could not open the project", sub: String(err.message || err).slice(0, 180) });
       }
-    }, [discardOk, openModelBytes, toast, setModule]);
+    }, [discardOk, openModelBytes, toast, setModule, openSurveyProject]);
     const importPackage = useCallback(async (file) => {
       if (!await discardOk("Importing a package discards them.")) return;
       setModal(null);
       try {
-        const { project: p, files, missingModels, missingEvidence } = await unpackProject(new Uint8Array(await file.arrayBuffer()));
+        const { project: p, files, missingModels, missingEvidence, missingDocuments } = await unpackProject(new Uint8Array(await file.arrayBuffer()));
         if (missingModels.length) throw new Error(`The package does not contain ${missingModels.join(", ")}.`);
         const src = p.models[0];
-        if (!src) throw new Error("The package has no source model.");
         if (missingEvidence.length) toast({ kind: "warn", msg: `${plural(missingEvidence.length, "evidence file")} missing from the package`, sub: missingEvidence.slice(0, 3).join(", ") });
+        if (missingDocuments.length) toast({ kind: "warn", msg: `${plural(missingDocuments.length, "survey document")} missing from the package`, sub: missingDocuments.slice(0, 3).join(", ") });
+        if (!src && p.survey) {
+          openSurveyProject(p, { files, restoreSaved: false });
+          setModule("overview");
+          toast({ kind: "info", msg: `Imported \u201C${p.name}\u201D`, sub: prefs.autosave ? "It will be saved in this browser by autosave." : "Save it to keep it in this browser." });
+          return;
+        }
+        if (!src) throw new Error("The package has no source model.");
         Object.defineProperty(p, "__files", { value: files, enumerable: false });
         if (await openModelBytes(files.get(src.sha256), src.fileName, { source: `Imported package \u201C${p.name}\u201D:`, restore: p, restoreSaved: false })) {
           setModule("overview");
@@ -682,7 +771,16 @@
       } catch (err) {
         toast({ kind: "error", msg: `Could not import ${file.name}`, sub: String(err.message || err).slice(0, 180) });
       }
-    }, [discardOk, openModelBytes, toast, setModule, prefs.autosave]);
+    }, [discardOk, openModelBytes, toast, setModule, prefs.autosave, openSurveyProject]);
+    const openDemoSurvey = useCallback(async () => {
+      try {
+        const res = await fetch(DEMO_SURVEY.url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await importPackage(new File([await res.blob()], DEMO_SURVEY.file, { type: "application/zip" }));
+      } catch (err) {
+        toast({ kind: "error", msg: "Could not open the demo survey", sub: "Serve the site over HTTP (not file://) and try again." });
+      }
+    }, [importPackage, toast]);
     const deleteStoredProject = useCallback(async (p) => {
       const ok = await confirm({ title: "Delete this project?", message: `\u201C${p.name}\u201D and its stored IFC copy (unless another project uses it) will be removed from this browser. This cannot be undone.`, confirm: "Delete", danger: true });
       if (!ok) return false;
@@ -713,7 +811,8 @@
       const refs = projectFileRefs(snapshot);
       const missingFiles = refs.filter((r) => !filesRef.current.has(r.sha256));
       download(new Blob([packProject(snapshot, filesRef.current)], { type: "application/zip" }), `${safeFileName(project.name)}.bim2reuse.zip`, "application/zip");
-      toast({ kind: missingFiles.length ? "warn" : "ok", msg: "Project package exported", sub: missingFiles.length ? `${plural(missingFiles.length, "evidence file")} could not be found and ${missingFiles.length === 1 ? "is" : "are"} not included` : `project.json, the source IFC${refs.length > 1 ? ` and ${plural(refs.length - 1, "evidence file")}` : ""}` });
+      const nModels = refs.filter((r) => r.kind === "model").length;
+      toast({ kind: missingFiles.length ? "warn" : "ok", msg: "Project package exported", sub: missingFiles.length ? `${plural(missingFiles.length, "file")} could not be found and ${missingFiles.length === 1 ? "is" : "are"} not included` : `project.json${nModels ? ", the source IFC" : ", the building survey"}${refs.length > nModels ? ` and ${plural(refs.length - nModels, "document")}` : ""}` });
     }, [model, registry, project, viewerState, toast]);
     const screenshot = useCallback(() => {
       const v = viewerRef.current;
@@ -736,21 +835,33 @@
           setModule("viewer");
           setTimeout(screenshot, 60);
         } },
-        { label: "Project package (.zip)", sub: "project.json + source IFC, to open on another computer", icon: Icons.Package, run: exportPackage }
+        ...project.survey ? [
+          { sep: true },
+          { label: "Survey components (CSV)", sub: `${plural(project.survey.components.length, "component")} with provenance`, icon: Icons.Table, run: () => {
+            download(surveyComponentsCsv(project.survey), `${safeFileName(project.name)}-survey-components.csv`, "text/csv");
+            toast({ kind: "ok", msg: "Survey CSV exported" });
+          } },
+          { label: "Building survey (JSON)", sub: "building, floors, components and document list", icon: Icons.Code, run: () => {
+            download(surveyJson(project.survey, project.name), `${safeFileName(project.name)}-survey.json`, "application/json");
+            toast({ kind: "ok", msg: "Survey JSON exported" });
+          } }
+        ] : [],
+        { label: "Project package (.zip)", sub: project.models.length ? "project.json + source IFC, to open on another computer" : "project.json + survey documents, to open on another computer", icon: Icons.Package, run: exportPackage }
       ];
-    }, [summary, model, viewerState.selectedIds, toast, screenshot, exportPackage, setModule]);
+    }, [summary, model, viewerState.selectedIds, toast, screenshot, exportPackage, setModule, project.survey, project.name, project.models.length]);
     useEffect(() => {
       const over = (e) => {
         var _a, _b;
         if ((_b = (_a = e.dataTransfer) == null ? void 0 : _a.types) == null ? void 0 : _b.includes("Files")) e.preventDefault();
       };
       const drop = (e) => {
-        var _a, _b;
+        var _a, _b, _c;
         if (!((_b = (_a = e.dataTransfer) == null ? void 0 : _a.files) == null ? void 0 : _b.length)) return;
         e.preventDefault();
         const f = e.dataTransfer.files[0];
         if (/\.zip$/i.test(f.name)) importPackage(f);
-        else loadIfcFile(f, "Dropped");
+        else if (/\.ifc$/i.test(f.name) || !project.survey) loadIfcFile(f, "Dropped");
+        else (_c = surveyUiRef.current) == null ? void 0 : _c.addDocuments([...e.dataTransfer.files]);
       };
       window.addEventListener("dragover", over);
       window.addEventListener("drop", drop);
@@ -758,7 +869,7 @@
         window.removeEventListener("dragover", over);
         window.removeEventListener("drop", drop);
       };
-    }, [loadIfcFile, importPackage]);
+    }, [loadIfcFile, importPackage, !!project.survey]);
     useEffect(() => {
       if (!dirty) return;
       const h = (e) => {
@@ -803,11 +914,11 @@
     const selectedGid = useMemo(() => {
       if (!model || viewerState.selectedIds.size === 0) return null;
       const el = model.byId.get([...viewerState.selectedIds][viewerState.selectedIds.size - 1]);
-      return el ? el.globalId || null : null;
+      return el ? componentIdOf(el) : null;
     }, [model, viewerState.selectedIds]);
     useEffect(() => {
       if (module !== "bank" || !selectedGid) return;
-      const it = bankItems.find((i) => i.globalId === selectedGid);
+      const it = bankItems.find((i) => bankItemRef(i) === selectedGid);
       if (it) setBkActive(it.id);
     }, [selectedGid, module]);
     useEffect(() => {
@@ -839,6 +950,27 @@
       const ids = gids.map((g) => registry.expressIdOfGlobalId(g)).filter((x) => x != null);
       if (ids.length) isolateHere(ids);
     }, [registry, isolateHere]);
+    const surveyUi = useSurveyWorkspace({
+      active: module === "survey" && !!survey && !!model,
+      project,
+      setSurvey,
+      setProject,
+      model,
+      viewerRef,
+      viewerState,
+      dispatch,
+      toast,
+      confirm,
+      addFile,
+      openFile,
+      getFileBytes,
+      passports,
+      passportRecords,
+      setPassportRecord,
+      onZoomTo,
+      theme
+    });
+    surveyUiRef.current = surveyUi;
     const reportCtx = useMemo(() => model && summary ? {
       project,
       model,
@@ -1160,7 +1292,7 @@
       }
     ) : null;
     const saveStatus = !model ? { state: "idle", text: "No model" } : saving ? { state: "busy", text: "Saving\u2026" } : saveError ? { state: "error", text: "Save failed" } : !saved ? { state: "dirty", text: prefs.autosave ? "Not saved yet" : "Not saved" } : dirty ? { state: "dirty", text: "Unsaved changes" } : { state: "ok", text: `${saved.auto ? "Autosaved" : "Saved"} ${formatTime(saved.at)}` };
-    const processing = loading ? { state: "busy", text: `Parsing ${Math.round(loading.progress * 100)}%`, title: loading.phase } : model && !secondaryReady ? { state: "busy", text: "Indexing properties" } : model ? { state: "ok", text: "Model ready", title: `${model.fileName}: geometry, properties and relationships indexed` } : null;
+    const processing = loading ? { state: "busy", text: `Parsing ${Math.round(loading.progress * 100)}%`, title: loading.phase } : model && model.isSurvey ? { state: "ok", text: "Survey ready", title: `Building survey: ${plural(survey.components.length, "component")} on ${plural(survey.floors.length, "floor")}` } : model && !secondaryReady ? { state: "busy", text: "Indexing properties" } : model ? { state: "ok", text: "Model ready", title: `${model.fileName}: geometry, properties and relationships indexed` } : null;
     const saveInfo = saved ? `${formatWhen(saved.at.toISOString())}${saved.auto ? " (autosave)" : ""}${dirty ? ", with unsaved changes since" : ""}` : "Not saved yet";
     const bodyStyle = {
       "--left-w": `${layout.left}px`,
@@ -1174,7 +1306,9 @@
     if (module === "passports") bodyStyle["--right-w"] = `${Math.max(layout.right, 420)}px`;
     let page = null;
     if (module === "overview") {
-      page = model && summary ? /* @__PURE__ */ React.createElement(ProjectDashboard, { project, model, summary, spatial, saveInfo, onOpenModule: setModule, onShowIds: showInViewer, stats: workflow }) : /* @__PURE__ */ React.createElement(StartPage, { samples: SAMPLES, onImport, onLoadSample: loadSample, onLoadFile: loadIfcFile, recent, storeError, onOpenProject: openStoredProject, onDeleteProject: deleteStoredProject, onOpenModule: setModule });
+      page = model && summary ? model.isSurvey ? /* @__PURE__ */ React.createElement(SurveyDashboard, { project, model, summary, saveInfo, onOpenModule: setModule, onShowIds: showInViewer, stats: workflow }) : /* @__PURE__ */ React.createElement(ProjectDashboard, { project, model, summary, spatial, saveInfo, onOpenModule: setModule, onShowIds: showInViewer, stats: workflow }) : /* @__PURE__ */ React.createElement(StartPage, { samples: SAMPLES, onImport, onLoadSample: loadSample, onLoadFile: loadIfcFile, recent, storeError, onOpenProject: openStoredProject, onDeleteProject: deleteStoredProject, onOpenModule: setModule, onNewSurvey: () => setModal("new-survey"), onOpenDemo: openDemoSurvey, demo: DEMO_SURVEY });
+    } else if (module === "survey" && !survey) {
+      page = /* @__PURE__ */ React.createElement(SurveyIntro, { hasModel: !!model, onNew: () => setModal("new-survey"), onAdd: () => setModal("add-survey"), onDemo: openDemoSurvey });
     } else if (module === "settings") {
       page = /* @__PURE__ */ React.createElement(
         SettingsPage,
@@ -1203,7 +1337,7 @@
         model,
         project,
         saveStatus,
-        onRename: (name) => setProject((p) => ({ ...p, name })),
+        onRename: (name) => setProject((p) => ({ ...p, name, survey: p.survey && !p.survey.building.name ? { ...p.survey, building: { ...p.survey.building, name } } : p.survey })),
         onNew: newProject,
         onOpen: () => setModal("open"),
         onSave: () => saveProject(),
@@ -1217,7 +1351,8 @@
         theme,
         onToggleTheme: () => setThemePref(theme === "dark" ? "light" : "dark"),
         onLoadSample: loadSample,
-        onHome: () => setModule("overview")
+        onHome: () => setModule("overview"),
+        onOpenDemo: openDemoSurvey
       }
     ), /* @__PURE__ */ React.createElement("input", { ref: fileInputRef, type: "file", accept: ".ifc", hidden: true, onChange: async (e) => {
       var _a;
@@ -1261,7 +1396,7 @@
       PassportList,
       {
         passports,
-        selectedGid: selectedPassport ? selectedPassport.globalId : null,
+        selectedGid: selectedPassport ? selectedPassport.componentId : null,
         filter: ppFilter,
         setFilter: setPpFilter,
         onSelect: (p) => {
@@ -1273,8 +1408,8 @@
       PassportEditor,
       {
         passport: selectedPassport,
-        record: selectedPassport ? passportRecords[selectedPassport.globalId] || null : null,
-        setRecord: (fn) => selectedPassport && setPassportRecord(selectedPassport.globalId, fn),
+        record: selectedPassport ? passportRecords[selectedPassport.componentId] || null : null,
+        setRecord: (fn) => selectedPassport && setPassportRecord(selectedPassport.componentId, fn),
         model,
         onZoomTo,
         dispatch,
@@ -1300,10 +1435,10 @@
         onToggleCollapsed: toggleBottom,
         toast,
         projectName: project.name,
-        activeGid: asActive || selectedPassport && selectedPassport.globalId,
+        activeGid: asActive || selectedPassport && selectedPassport.componentId,
         setActiveGid: setAsActive
       }
-    ), module === "assessment" && model && /* @__PURE__ */ React.createElement(AssessmentDetail, { result: assessment && selectedPassport ? assessment.byGid.get(selectedPassport.globalId) : null, theme, onOpenPassport: () => setModule("passports") }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconSidebar, { model, plan: decon, setPlan: setDecon, analysis: deconAnalysis, warnings: deconWarnings, playStage, setPlayStage, onShowGids: showGids, toast }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconPanel, { model, plan: decon, analysis: deconAnalysis, activeGid: selectedGid, onPickGid: pickGid, collapsed: layout.bottomCollapsed, onToggleCollapsed: toggleBottom, toast, projectName: project.name }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconDetail, { model, gid: selectedGid, plan: decon, setPlan: setDecon, analysis: deconAnalysis, pickMode, setPickMode, onPickGid: pickGid }), module === "bank" && model && /* @__PURE__ */ React.createElement(
+    ), module === "assessment" && model && /* @__PURE__ */ React.createElement(AssessmentDetail, { result: assessment && selectedPassport ? assessment.byGid.get(selectedPassport.componentId) : null, theme, onOpenPassport: () => setModule("passports") }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconSidebar, { model, plan: decon, setPlan: setDecon, analysis: deconAnalysis, warnings: deconWarnings, playStage, setPlayStage, onShowGids: showGids, toast }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconPanel, { model, plan: decon, analysis: deconAnalysis, activeGid: selectedGid, onPickGid: pickGid, collapsed: layout.bottomCollapsed, onToggleCollapsed: toggleBottom, toast, projectName: project.name }), module === "deconstruction" && model && deconAnalysis && /* @__PURE__ */ React.createElement(DeconDetail, { model, gid: selectedGid, plan: decon, setPlan: setDecon, analysis: deconAnalysis, pickMode, setPickMode, onPickGid: pickGid }), module === "bank" && model && /* @__PURE__ */ React.createElement(
       BankSidebar,
       {
         items: bankItems,
@@ -1357,7 +1492,7 @@
         projectName: project.name,
         sourceModel: model
       }
-    ), module === "matching" && model && /* @__PURE__ */ React.createElement(MatchingDetail, { items: bankItems, matching, setMatching, active: mtActive, setActive: setMtActive, registry, dispatch, onZoomTo, onEditRequirement: setReqEdit, confirm }), isViewer && /* @__PURE__ */ React.createElement(LeftSidebar, { model, viewerState, dispatch, onPick, onZoomTo, onContext, onSaveView, onRestoreView, tab: leftTab, setTab: setLeftTab }), /* @__PURE__ */ React.createElement(
+    ), module === "matching" && model && /* @__PURE__ */ React.createElement(MatchingDetail, { items: bankItems, matching, setMatching, active: mtActive, setActive: setMtActive, registry, dispatch, onZoomTo, onEditRequirement: setReqEdit, confirm }), module === "survey" && model && survey && /* @__PURE__ */ React.createElement(SurveySidebar, { ui: surveyUi }), module === "survey" && model && survey && /* @__PURE__ */ React.createElement(SurveyInspector, { ui: surveyUi }), module === "survey" && model && survey && /* @__PURE__ */ React.createElement(SurveyPanel, { ui: surveyUi, collapsed: layout.bottomCollapsed, onToggleCollapsed: toggleBottom }), isViewer && /* @__PURE__ */ React.createElement(LeftSidebar, { model, viewerState, dispatch, onPick, onZoomTo, onContext, onSaveView, onRestoreView, tab: leftTab, setTab: setLeftTab }), /* @__PURE__ */ React.createElement(
       ViewerCanvas,
       {
         model,
@@ -1403,7 +1538,8 @@
         modeColors,
         modeLegend: isWorkspace ? modeLegend : null,
         modeOpacity,
-        hint: null
+        hint: null,
+        toolbar: module === "survey" && model && survey ? /* @__PURE__ */ React.createElement(SurveyToolbar, { ui: surveyUi }) : null
       }
     ), isViewer && /* @__PURE__ */ React.createElement(Inspector, { model, viewerState, dispatch, onZoomTo, toast, onSelect: (id) => dispatch({ type: "select", ids: [id] }) }), isViewer && /* @__PURE__ */ React.createElement(
       BottomPanel,
@@ -1418,12 +1554,12 @@
         collapsed: layout.bottomCollapsed,
         onToggleCollapsed: toggleBottom,
         viewerRef,
-        secondaryReady
+        secondaryReady: modelReady
       }
-    ), isWorkspace && !model && !loading && /* @__PURE__ */ React.createElement("div", { className: "viewer-empty" }, /* @__PURE__ */ React.createElement(EmptyState, { icon: Icons.Cube, title: "No model open", action: /* @__PURE__ */ React.createElement("div", { className: "empty-actions" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-primary", onClick: onImport }, /* @__PURE__ */ React.createElement(Icons.Upload, { size: 15 }), " Import IFC"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => setModal("open") }, /* @__PURE__ */ React.createElement(Icons.FolderOpen, { size: 15 }), " Open project"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-ghost", onClick: () => loadSample(SAMPLES[0]) }, "Open a sample")) }, "Import an IFC file, or reopen a project saved in this browser.")), page && /* @__PURE__ */ React.createElement("div", { className: "page-host", "data-module": module }, page), loading && /* @__PURE__ */ React.createElement(LoadingOverlay, { fileName: loading.fileName, progress: loading.progress, phase: loading.phase, log }))), modal === "help" && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setModal(null), onOpenModule: setModule }), modal === "open" && /* @__PURE__ */ React.createElement(OpenProjectDialog, { onClose: () => setModal(null), onOpen: openStoredProject, onImportPackage: importPackage, onDelete: deleteStoredProject }), modal === "saveas" && /* @__PURE__ */ React.createElement(SaveAsDialog, { initial: `${project.name} (copy)`, onClose: () => setModal(null), onSave: async (name) => {
+    ), isWorkspace && !model && !loading && module !== "survey" && /* @__PURE__ */ React.createElement("div", { className: "viewer-empty" }, /* @__PURE__ */ React.createElement(EmptyState, { icon: Icons.Cube, title: "No model open", action: /* @__PURE__ */ React.createElement("div", { className: "empty-actions" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-primary", onClick: onImport }, /* @__PURE__ */ React.createElement(Icons.Upload, { size: 15 }), " Import IFC"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => setModal("new-survey") }, /* @__PURE__ */ React.createElement(Icons.Building, { size: 15 }), " Survey a building"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => setModal("open") }, /* @__PURE__ */ React.createElement(Icons.FolderOpen, { size: 15 }), " Open project"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-ghost", onClick: () => loadSample(SAMPLES[0]) }, "Open a sample")) }, "Import an IFC file, start a building survey of an existing building without BIM, or reopen a project saved in this browser.")), page && /* @__PURE__ */ React.createElement("div", { className: "page-host", "data-module": module }, page), loading && /* @__PURE__ */ React.createElement(LoadingOverlay, { fileName: loading.fileName, progress: loading.progress, phase: loading.phase, log }))), modal === "help" && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setModal(null), onOpenModule: setModule }), modal === "open" && /* @__PURE__ */ React.createElement(OpenProjectDialog, { onClose: () => setModal(null), onOpen: openStoredProject, onImportPackage: importPackage, onDelete: deleteStoredProject }), modal === "saveas" && /* @__PURE__ */ React.createElement(SaveAsDialog, { initial: `${project.name} (copy)`, onClose: () => setModal(null), onSave: async (name) => {
       setModal(null);
       await saveProject({ asName: name });
-    } }), reqEdit && /* @__PURE__ */ React.createElement(RequirementDialog, { initial: reqEdit, onClose: () => setReqEdit(null), onSave: saveRequirement }), /* @__PURE__ */ React.createElement(ConfirmDialog, { request: confirmReq }), model && /* @__PURE__ */ React.createElement(ContextMenu, { menu: contextMenu, onClose: () => setContextMenu(null), dispatch, onZoomTo, model, toast }), /* @__PURE__ */ React.createElement(ToastContainer, { toasts, onDismiss: dismissToast }));
+    } }), modal === "new-survey" && /* @__PURE__ */ React.createElement(NewSurveyDialog, { onClose: () => setModal(null), onCreate: startSurveyProject }), modal === "add-survey" && /* @__PURE__ */ React.createElement(NewSurveyDialog, { adding: true, onClose: () => setModal(null), onCreate: addSurveyToProject }), reqEdit && /* @__PURE__ */ React.createElement(RequirementDialog, { initial: reqEdit, onClose: () => setReqEdit(null), onSave: saveRequirement }), /* @__PURE__ */ React.createElement(ConfirmDialog, { request: confirmReq }), model && /* @__PURE__ */ React.createElement(ContextMenu, { menu: contextMenu, onClose: () => setContextMenu(null), dispatch, onZoomTo, model, toast }), /* @__PURE__ */ React.createElement(ToastContainer, { toasts, onDismiss: dismissToast }));
   }
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(/* @__PURE__ */ React.createElement(App, null));

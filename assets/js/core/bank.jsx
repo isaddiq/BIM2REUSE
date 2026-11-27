@@ -56,10 +56,11 @@ function bankItemFromPassport(passport, el, buildingName, now = new Date().toISO
   const verification = pv(passport, 'verificationStatus') || 'not-started';
   const rating = num(pv(passport, 'conditionRating'));
   return {
-    id: `bank-${passport.globalId}`,
+    id: `bank-${passport.componentId}`,
     sourceBuilding: buildingName,
-    origin: 'model',
-    globalId: passport.globalId,
+    origin: passport.survey ? 'survey' : 'model',
+    componentId: passport.componentId,
+    globalId: passport.globalId || null,
     ifcClass: el.ifcClass,
     component: componentCategory(el.ifcClass),
     name: pv(passport, 'elementName') || el.ifcClass,
@@ -118,7 +119,7 @@ function csvObjects(text) {
 }
 
 const BANK_COLUMNS = {
-  id: ['id', 'bank_id', 'item_id'], sourceBuilding: ['source_building', 'building', 'source'], globalId: ['global_id', 'globalid', 'ifc_globalid', 'guid'],
+  id: ['id', 'bank_id', 'item_id'], sourceBuilding: ['source_building', 'building', 'source'], globalId: ['global_id', 'globalid', 'ifc_globalid', 'guid'], componentId: ['component_id', 'survey_component_id'],
   component: ['component', 'component_category', 'type', 'element_type'], name: ['name', 'description', 'element_name'],
   material: ['material', 'material_name'], materialCategory: ['material_category', 'category'],
   length: ['length_m', 'length'], width: ['width_m', 'width'], height: ['height_m', 'height', 'depth_m', 'depth'], crossSection: ['cross_section', 'profile', 'section'],
@@ -157,6 +158,7 @@ function normaliseBankRecords(records, origin, sourceName, now = new Date().toIS
       sourceBuilding: get('sourceBuilding') || sourceName,
       origin,
       globalId: get('globalId'),
+      componentId: get('componentId') || get('globalId'),
       ifcClass: null,
       component,
       name: get('name') || COMPONENT_LABEL[component],
@@ -198,11 +200,11 @@ function importBankJson(text, fileName) {
   return normaliseBankRecords(records, 'json', fileName);
 }
 
-const BANK_CSV_HEAD = ['id', 'source_building', 'global_id', 'component', 'name', 'material', 'material_category', 'length_m', 'width_m', 'height_m', 'cross_section', 'quantity', 'mass_kg', 'condition', 'grade', 'availability', 'verification', 'location', 'distance_km', 'cost', 'currency', 'passport', 'notes'];
+const BANK_CSV_HEAD = ['id', 'source_building', 'global_id', 'component_id', 'component', 'name', 'material', 'material_category', 'length_m', 'width_m', 'height_m', 'cross_section', 'quantity', 'mass_kg', 'condition', 'grade', 'availability', 'verification', 'location', 'distance_km', 'cost', 'currency', 'passport', 'notes'];
 
 function bankCsv(items) {
   const lines = [BANK_CSV_HEAD.join(',')];
-  items.forEach(it => lines.push([it.id, it.sourceBuilding, it.globalId, it.component, it.name, it.material, it.materialCategory, it.length, it.width, it.height, it.crossSection, it.quantity, it.mass, it.condition, it.grade, it.availability, it.verification, it.location, it.distanceKm, it.cost, it.currency, it.passportRef, it.notes].map(csvCellPlain).join(',')));
+  items.forEach(it => lines.push([it.id, it.sourceBuilding, it.globalId, it.componentId || it.globalId, it.component, it.name, it.material, it.materialCategory, it.length, it.width, it.height, it.crossSection, it.quantity, it.mass, it.condition, it.grade, it.availability, it.verification, it.location, it.distanceKm, it.cost, it.currency, it.passportRef, it.notes].map(csvCellPlain).join(',')));
   return lines.join('\n');
 }
 
@@ -241,10 +243,15 @@ function bankItemsFromProject(other, now = new Date().toISOString()) {
   });
 }
 
-const BANK_ORIGIN_LABEL = { model: 'IFC model',csv: 'CSV import', json: 'JSON import', project: 'Saved project' };
+const BANK_ORIGIN_LABEL = { model: 'IFC model', survey: 'Building survey', csv: 'CSV import', json: 'JSON import', project: 'Saved project' };
+
+/** The component a bank item stands for in this project's model: survey component ID or GlobalId. */
+function bankItemRef(it) {
+  return (it && (it.componentId || it.globalId)) || null;
+}
 
 Object.assign(window, {
   BANK_STATES, BANK_STATE_LABEL, COMPONENT_CATEGORIES, COMPONENT_LABEL, LINEAR_COMPONENTS, BANK_CSV_HEAD, BANK_ORIGIN_LABEL,
-  componentCategory, bankItemFromPassport, parseCsv, csvObjects, normaliseBankRecords, importBankCsv, importBankJson, bankCsv, mergeBankItems,
+  componentCategory, bankItemFromPassport, bankItemRef, parseCsv, csvObjects, normaliseBankRecords, importBankCsv, importBankJson, bankCsv, mergeBankItems,
   addNewBankItems, bankItemsFromProject,
 });

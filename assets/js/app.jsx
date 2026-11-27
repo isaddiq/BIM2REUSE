@@ -1,4 +1,8 @@
-/** BIM2REUSE — application shell: project state, module navigation and the shared IFC viewer. */
+/**
+ * BIM2REUSE — application shell: project state, module navigation and the shared 3D viewer.
+ * A project starts from an IFC model (Workflow 1) or from a building survey of an existing
+ * building without BIM (Workflow 2); `model` is the IFC model, the survey model, or both combined.
+ */
 
 const APP_NAME = 'BIM2REUSE';
 const APP_TAGLINE = 'From BIM to Circular Construction';
@@ -18,6 +22,13 @@ const SAMPLES = [
     downloadable: true,
   },
 ];
+// Workflow 2 demo: a complete building survey project (fictional building), opened as a package.
+const DEMO_SURVEY = {
+  name: 'Former Post Office (demo survey)',
+  file: 'demo-survey.bim2reuse.zip',
+  url: 'assets/samples/demo-survey.bim2reuse.zip',
+  facts: 'A fictional two-storey 1968 steel-frame building without a BIM model: 52 surveyed components with dimensions, materials, condition, connections and reuse potential, two scaled tracing plans, a structural section, a condition report, hazardous materials screening, a material test certificate and two passports approved for reuse.',
+};
 const SOURCE_REPO_URL = 'https://github.com/isaddiq/BIM2Reuse';
 const AUTHOR_URL = 'https://isaddiq.github.io/';
 
@@ -75,16 +86,17 @@ function formatTime(d) {
 function viewerSignature(v) {
   return JSON.stringify([v.savedViews, v.selectionSets, v.annotations, v.measurements]);
 }
-function dataSignature(viewer, modules) {
-  return `${viewerSignature(viewer)}|${JSON.stringify(modules || {})}`;
+function dataSignature(viewer, modules, survey) {
+  return `${viewerSignature(viewer)}|${JSON.stringify(modules || {})}|${JSON.stringify(survey || null)}`;
 }
 
 // Modules that work in the shared 3D workspace (side panels around the viewer).
-const WORKSPACE_MODULES = ['viewer', 'materials', 'passports', 'assessment', 'deconstruction', 'bank', 'matching'];
+const WORKSPACE_MODULES = ['viewer', 'survey', 'materials', 'passports', 'assessment', 'deconstruction', 'bank', 'matching'];
 // Modules with a tall bottom table.
-const TABLE_MODULES = ['materials', 'assessment', 'deconstruction', 'bank', 'matching'];
+const TABLE_MODULES = ['survey', 'materials', 'assessment', 'deconstruction', 'bank', 'matching'];
 // The colour mode each module opens in.
-const MODULE_MODE = { materials: 'material', passports: 'passport', assessment: 'reuse', deconstruction: 'stage', bank: 'bank', matching: 'match' };
+const MODULE_MODE = { survey: 'survey', materials: 'material', passports: 'passport', assessment: 'reuse', deconstruction: 'stage', bank: 'bank', matching: 'match' };
+let ifcParseCount = 0;
 const INVENTORY_MODES = ['material', 'passport', 'reuse'];
 const NO_MODE = { colors: null, legend: null };
 // Modules whose workspace has no bottom panel.
@@ -104,7 +116,7 @@ function BrandMark({ size = 32 }) {
 function TopBar(props) {
   const {
     model, project, saveStatus, onRename, onNew, onOpen, onSave, onSaveAs, onImport, exportItems, onSearch, searchRef,
-    processing, onHelp, theme, onToggleTheme, onLoadSample, onHome,
+    processing, onHelp, theme, onToggleTheme, onLoadSample, onHome, onOpenDemo,
   } = props;
   const [q, setQ] = useState('');
   const [focused, setFocused] = useState(false);
@@ -193,6 +205,7 @@ function TopBar(props) {
               {SAMPLES.map(smp => (
                 <button key={smp.id} type="button" role="menuitem" onClick={() => { setMenu(false); onLoadSample(smp); }}><Icons.Cube size={15} /> Open sample: {smp.name}</button>
               ))}
+              <button type="button" role="menuitem" onClick={() => { setMenu(false); onOpenDemo(); }}><Icons.Building size={15} /> Open demo: building survey</button>
               <div className="menu-sep" />
               <a role="menuitem" href={SOURCE_REPO_URL} target="_blank" rel="noopener noreferrer"><Icons.Github size={15} /> Source code <Icons.External size={12} className="trail" /></a>
               <a role="menuitem" href={AUTHOR_URL} target="_blank" rel="noopener noreferrer"><Icons.Globe size={15} /> Author <Icons.External size={12} className="trail" /></a>
@@ -238,13 +251,14 @@ function App() {
   const [saved, setSaved] = useState(null); // { sig, name, sha, at, auto } of the last save or open
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  const [model, setModel] = useState(null);
+  const [ifcModel, setModel] = useState(null);
   const [modelSha, setModelSha] = useState(null);
   const [secondaryReady, setSecondaryReady] = useState(false);
   const [loading, setLoading] = useState(null);
   const [recent, setRecent] = useState(null);
   const [storeError, setStoreError] = useState(null);
   const filesRef = useRef(new Map());
+  const surveyUiRef = useRef(null);
 
   // ---- UI state ----------------------------------------------------------------------------
   const [module, setModuleState] = useState(moduleFromHash);
@@ -285,7 +299,15 @@ function App() {
   const bodyRef = useRef(null);
   const searchRef = useRef(null);
   const modelRef = useRef(null);
+  // The model every module reads: the IFC model, the survey as a model, or both combined.
+  const survey = project.survey || null;
+  const model = useMemo(() => {
+    if (!survey) return ifcModel;
+    return ifcModel ? combineModels(ifcModel, survey) : buildSurveyModel(survey, { sourceKey: `survey:${project.id}` });
+  }, [ifcModel, survey, project.id]);
+  const modelReady = secondaryReady || !!(model && model.isSurvey);
   modelRef.current = model;
+  const setSurvey = useCallback((fn) => setProject(p => ({ ...p, survey: typeof fn === 'function' ? fn(p.survey) : fn })), []);
 
   // ---- Persistence of preferences ------------------------------------------------------------
   useEffect(() => {
@@ -353,14 +375,14 @@ function App() {
     if (!model) return null;
     try { return buildSpatialIndex(model); } catch (err) { console.error(err); return null; }
   }, [model]);
-  const summary = useMemo(() => (model ? summarizeModel(model) : null), [model, secondaryReady]);
-  const sig = dataSignature(viewerState, project.modules);
+  const summary = useMemo(() => (model ? summarizeModel(model) : null), [model, modelReady]);
+  const sig = dataSignature(viewerState, project.modules, project.survey);
   const matSettings = (project.modules && project.modules.materials) || EMPTY_MATERIAL_SETTINGS;
   const setMatSettings = useCallback((fn) => setProject(p => {
     const cur = (p.modules && p.modules.materials) || EMPTY_MATERIAL_SETTINGS;
     return { ...p, modules: { ...p.modules, materials: typeof fn === 'function' ? fn(cur) : fn } };
   }), []);
-  const inventoryState = useInventory(model, secondaryReady, matSettings);
+  const inventoryState = useInventory(model, modelReady, matSettings);
   const inventory = inventoryState.inventory;
   const materialMode = useMemo(() => materialModeData(inventory, theme), [inventory, theme]);
   const colorModes = useMemo(() => [
@@ -371,10 +393,11 @@ function App() {
     ...(model ? [{ id: 'bank', label: 'Bank', title: 'Colour by material bank availability' }] : []),
     ...(model ? [{ id: 'match', label: 'Match', title: 'Colour by the last reuse matching run' }] : []),
     ...(model ? [{ id: 'stage', label: 'Stage', title: 'Colour by deconstruction stage' }] : []),
-  ].map(m => (m.id === MODULE_MODE[module] ? { ...m, pinned: true } : m)), [inventory, model, module]);
+    ...(model && survey ? [{ id: 'survey', label: 'Survey', title: 'Colour surveyed components by missing, estimated and verified information' }] : []),
+  ].map(m => (m.id === MODULE_MODE[module] ? { ...m, pinned: true } : m)), [inventory, model, module, !!survey]);
   useEffect(() => {
-    if ((INVENTORY_MODES.includes(colorMode) && !inventory) || (['bank', 'match', 'stage'].includes(colorMode) && !model)) setColorMode('normal');
-  }, [inventory, model, colorMode]);
+    if ((INVENTORY_MODES.includes(colorMode) && !inventory) || (['bank', 'match', 'stage'].includes(colorMode) && !model) || (colorMode === 'survey' && !survey)) setColorMode('normal');
+  }, [inventory, model, colorMode, !!survey]);
 
   // ---- Passports and assessment --------------------------------------------------------------
   const passportRecords = (project.modules && project.modules.passports && project.modules.passports.records) || EMPTY_RECORDS;
@@ -426,7 +449,7 @@ function App() {
     const cur = normaliseDecon(p.modules && p.modules.deconstruction);
     return { ...p, modules: { ...p.modules, deconstruction: typeof fn === 'function' ? fn(cur) : fn } };
   }), []);
-  const deconGids = useMemo(() => (model ? new Set(deconTasks(model).map(el => el.globalId)) : new Set()), [model]);
+  const deconGids = useMemo(() => (model ? new Set(deconTasks(model).map(el => componentIdOf(el))) : new Set()), [model]);
   const deconAnalysis = useMemo(() => {
     if (!model) return null;
     const durations = {};
@@ -452,12 +475,18 @@ function App() {
     if (!passports || !model || viewerState.selectedIds.size === 0) return null;
     const id = [...viewerState.selectedIds][viewerState.selectedIds.size - 1];
     const el = model.byId.get(id);
-    return el && el.globalId ? passports.get(el.globalId) || null : null;
+    return el && componentIdOf(el) ? passports.get(componentIdOf(el)) || null : null;
   }, [passports, model, viewerState.selectedIds]);
   const addFile = useCallback(async (bytes) => {
     const sha = await sha256Hex(bytes);
     filesRef.current.set(sha, bytes);
     return sha;
+  }, []);
+  const getFileBytes = useCallback(async (sha) => {
+    let bytes = filesRef.current.get(sha);
+    if (!bytes) bytes = await ProjectStore.getFile(sha).catch(() => null);
+    if (bytes) filesRef.current.set(sha, bytes);
+    return bytes || null;
   }, []);
   const openFile = useCallback(async (ev) => {
     let bytes = filesRef.current.get(ev.sha256);
@@ -476,7 +505,7 @@ function App() {
   const modeOpacity = useMemo(() => {
     if (module === 'deconstruction' && model && deconAnalysis && playStage > 0) {
       const m = new Map();
-      model.elements.forEach(el => { const s = el.globalId ? deconAnalysis.stage.get(el.globalId) : null; if (el.geometry && s && s <= playStage) m.set(el.expressId, 0.06); });
+      model.elements.forEach(el => { const s = componentIdOf(el) ? deconAnalysis.stage.get(componentIdOf(el)) : null; if (el.geometry && s && s <= playStage) m.set(el.expressId, 0.06); });
       return m;
     }
     if (module !== 'passports' || !model || !selectedPassport) return null;
@@ -485,8 +514,10 @@ function App() {
     return m;
   }, [module, model, selectedPassport, deconAnalysis, playStage]);
   const dirty = !!model && (!saved || saved.sig !== sig || saved.name !== project.name || saved.sha !== modelSha);
+  const surveyMode = useMemo(() => (colorMode === 'survey' ? surveyModeData(model, theme) : NO_MODE), [colorMode, model, theme]);
 
   const modeColors = useMemo(() => {
+    if (colorMode === 'survey') return surveyMode.colors;
     if (colorMode === 'material') return materialMode.colors;
     if (colorMode === 'passport') return passportMode.colors;
     if (colorMode === 'reuse') return reuseMode.colors;
@@ -498,8 +529,9 @@ function App() {
     const m = new Map();
     summary.groups.forEach(g => g.ids.forEach(id => m.set(id, pal[g.id] || pal.other)));
     return m;
-  }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode]);
+  }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode, surveyMode]);
   const modeLegend = useMemo(() => {
+    if (colorMode === 'survey') return surveyMode.legend;
     if (colorMode === 'material') return materialMode.legend;
     if (colorMode === 'passport') return passportMode.legend;
     if (colorMode === 'reuse') return reuseMode.legend;
@@ -513,7 +545,7 @@ function App() {
       items: summary.groups.filter(g => g.withGeometry).map(g => ({ id: g.id, label: g.name, color: pal[g.id] || pal.other, ids: g.ids })),
       note: 'Click a category to isolate it. Openings and room volumes are not coloured.',
     };
-  }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode]);
+  }, [summary, colorMode, theme, materialMode, passportMode, reuseMode, bankMode, matchMode, stageMode, surveyMode]);
 
   // ---- Reset everything tied to a model ----------------------------------------------------------
   const resetSession = useCallback(() => {
@@ -567,11 +599,13 @@ function App() {
         }),
         sha256Hex(bytes),
       ]);
-      const keep = restore ? (restore.__files || new Map()) : new Map([...filesRef.current].filter(([k]) => projectFileRefs(project).some(r => r.kind === 'evidence' && r.sha256 === k)));
+      const keep = restore ? (restore.__files || new Map()) : new Map([...filesRef.current].filter(([k]) => projectFileRefs(project).some(r => r.kind !== 'model' && r.sha256 === k)));
       filesRef.current = new Map([...keep, [sha, bytes]]);
-      const reg = buildElementRegistry(m, 'source');
+      m.sourceKey = `ifc:${sha}:${++ifcParseCount}`;
       const base = restore || project;
-      const nextProject = { ...base, models: [describeModel(m, sha, 'source')] };
+      // Survey records refer to their components by component ID, so they are resolved on the combined model.
+      const reg = buildElementRegistry(base.survey ? combineModels(m, base.survey) : m, 'source');
+      const nextProject = { ...base, models: [describeModel(m, sha, 'source')], workflow: base.workflow || 'ifc' };
       setProject(nextProject);
       setModelSha(sha);
       setModel(m);
@@ -581,7 +615,7 @@ function App() {
         const restored = restoreViewerData(data, reg);
         dispatch({ type: 'restore-data', data: restored });
         if (restored.missing) toast({ kind: 'warn', msg: `${plural(restored.missing, 'element reference')} not found in this model`, sub: 'Views, sets or issues that pointed to them were kept without those elements.' });
-        setSaved(restoreSaved ? { sig: dataSignature(restored, nextProject.modules), name: nextProject.name, sha, at: new Date(nextProject.updatedAt), auto: false } : null);
+        setSaved(restoreSaved ? { sig: dataSignature(restored, nextProject.modules, nextProject.survey), name: nextProject.name, sha, at: new Date(nextProject.updatedAt), auto: false } : null);
       } else {
         setSaved(null);
       }
@@ -603,17 +637,24 @@ function App() {
       toast({ kind: 'error', msg: `${file.name} is not an .ifc file`, sub: 'Choose a STEP-encoded .ifc file (IFC2x3, IFC4 or IFC4.3).' });
       return;
     }
-    if (modelRef.current) {
+    if (modelRef.current && project.survey && !ifcModel) {
+      const ok = await confirm({
+        title: 'Add an IFC model to this survey?',
+        message: `${file.name} becomes the source model of “${project.name}”. The building survey and all its records are kept: surveyed components appear next to the IFC elements, and you can link each one to the IFC element it is in Building Survey. To keep the survey on its own, choose New project first.`,
+        confirm: 'Add IFC model',
+      });
+      if (!ok) return;
+    } else if (ifcModel) {
       const ok = await confirm({
         title: 'Replace the source model?',
-        message: `${file.name} will replace ${modelRef.current.fileName} in “${project.name}”. Saved views, selection sets and issues are carried over for elements whose GlobalId also exists in the new file. To keep the current project unchanged, choose New project first.`,
+        message: `${file.name} will replace ${ifcModel.fileName} in “${project.name}”. Saved views, selection sets and issues are carried over for elements whose GlobalId also exists in the new file.${project.survey ? ' The building survey is kept.' : ''} To keep the current project unchanged, choose New project first.`,
         confirm: 'Replace model',
       });
       if (!ok) return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     await openModelBytes(bytes, file.name, { source });
-  }, [toast, confirm, openModelBytes, project.name]);
+  }, [toast, confirm, openModelBytes, project.name, project.survey, ifcModel]);
 
   const loadSample = useCallback(async (sample = SAMPLES[0]) => {
     try {
@@ -683,6 +724,48 @@ function App() {
     setModule('overview');
   }, [discardOk, resetSession, setModule]);
 
+  /** Workflow 2: a new project for an existing building without BIM. */
+  const startSurveyProject = useCallback(async (opts) => {
+    if (!(await discardOk('Starting a new project discards them.'))) return false;
+    modelRef.current?.close?.();
+    setModel(null);
+    setModelSha(null);
+    resetSession();
+    setLog([]);
+    filesRef.current = new Map();
+    setProject(createSurveyProject(opts.name, { building: opts.building, floors: opts.floors, basements: opts.basements, floorHeight: opts.floorHeight }));
+    setSaved(null);
+    setSaveError(null);
+    setColorMode('normal');
+    setModal(null);
+    setModule('survey');
+    toast({ kind: 'ok', msg: `Started the survey of “${opts.name}”`, sub: 'Choose a component type in the 3D view and click to place it, or import an inventory.' });
+    return true;
+  }, [discardOk, resetSession, setModule, toast]);
+  /** Add a building survey to the open IFC project (surveyed components next to the IFC elements). */
+  const addSurveyToProject = useCallback((opts) => {
+    setProject(p => ({ ...p, survey: createSurvey({ building: opts.building, floors: opts.floors, basements: opts.basements, floorHeight: opts.floorHeight }) }));
+    setModal(null);
+    setModule('survey');
+    toast({ kind: 'ok', msg: 'Building survey added', sub: 'Surveyed components are shown next to the IFC elements.' });
+  }, [setModule, toast]);
+  /** Open a survey-only project (no IFC model): rebuild its model from the survey. */
+  const openSurveyProject = useCallback((p, { files = new Map(), restoreSaved = false } = {}) => {
+    modelRef.current?.close?.();
+    setModel(null);
+    setModelSha(null);
+    resetSession();
+    setLog([]);
+    filesRef.current = files;
+    setProject(p);
+    const reg = buildElementRegistry(buildSurveyModel(p.survey, { sourceKey: `survey:${p.id}` }), 'source');
+    const restored = restoreViewerData(p.viewer, reg);
+    dispatch({ type: 'restore-data', data: restored });
+    setSaved(restoreSaved ? { sig: dataSignature(restored, p.modules, p.survey), name: p.name, sha: null, at: new Date(p.updatedAt), auto: false } : null);
+    setSaveError(null);
+    toast({ kind: 'ok', msg: `Opened “${p.name}”`, sub: `Building survey: ${plural(p.survey.components.length, 'component')} on ${plural(p.survey.floors.length, 'floor')}` });
+  }, [resetSession, toast]);
+
   const openStoredProject = useCallback(async (id) => {
     if (!(await discardOk('Opening another project discards them.'))) return;
     setModal(null);
@@ -691,6 +774,7 @@ function App() {
       if (!stored) throw new Error('The project is no longer in the local store.');
       const p = validateProject(stored);
       const src = p.models[0];
+      if (!src && p.survey) { openSurveyProject(p, { restoreSaved: true }); setModule('overview'); return; }
       if (!src) throw new Error('The project has no source model.');
       const bytes = await ProjectStore.getFile(src.sha256);
       if (!bytes) throw new Error(`The IFC file ${src.fileName} is missing from the local store. Import it again to continue.`);
@@ -698,17 +782,24 @@ function App() {
     } catch (err) {
       toast({ kind: 'error', msg: 'Could not open the project', sub: String(err.message || err).slice(0, 180) });
     }
-  }, [discardOk, openModelBytes, toast, setModule]);
+  }, [discardOk, openModelBytes, toast, setModule, openSurveyProject]);
 
   const importPackage = useCallback(async (file) => {
     if (!(await discardOk('Importing a package discards them.'))) return;
     setModal(null);
     try {
-      const { project: p, files, missingModels, missingEvidence } = await unpackProject(new Uint8Array(await file.arrayBuffer()));
+      const { project: p, files, missingModels, missingEvidence, missingDocuments } = await unpackProject(new Uint8Array(await file.arrayBuffer()));
       if (missingModels.length) throw new Error(`The package does not contain ${missingModels.join(', ')}.`);
       const src = p.models[0];
-      if (!src) throw new Error('The package has no source model.');
       if (missingEvidence.length) toast({ kind: 'warn', msg: `${plural(missingEvidence.length, 'evidence file')} missing from the package`, sub: missingEvidence.slice(0, 3).join(', ') });
+      if (missingDocuments.length) toast({ kind: 'warn', msg: `${plural(missingDocuments.length, 'survey document')} missing from the package`, sub: missingDocuments.slice(0, 3).join(', ') });
+      if (!src && p.survey) {
+        openSurveyProject(p, { files, restoreSaved: false });
+        setModule('overview');
+        toast({ kind: 'info', msg: `Imported “${p.name}”`, sub: prefs.autosave ? 'It will be saved in this browser by autosave.' : 'Save it to keep it in this browser.' });
+        return;
+      }
+      if (!src) throw new Error('The package has no source model.');
       Object.defineProperty(p, '__files', { value: files, enumerable: false });
       if (await openModelBytes(files.get(src.sha256), src.fileName, { source: `Imported package “${p.name}”:`, restore: p, restoreSaved: false })) {
         setModule('overview');
@@ -717,7 +808,17 @@ function App() {
     } catch (err) {
       toast({ kind: 'error', msg: `Could not import ${file.name}`, sub: String(err.message || err).slice(0, 180) });
     }
-  }, [discardOk, openModelBytes, toast, setModule, prefs.autosave]);
+  }, [discardOk, openModelBytes, toast, setModule, prefs.autosave, openSurveyProject]);
+
+  const openDemoSurvey = useCallback(async () => {
+    try {
+      const res = await fetch(DEMO_SURVEY.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await importPackage(new File([await res.blob()], DEMO_SURVEY.file, { type: 'application/zip' }));
+    } catch (err) {
+      toast({ kind: 'error', msg: 'Could not open the demo survey', sub: 'Serve the site over HTTP (not file://) and try again.' });
+    }
+  }, [importPackage, toast]);
 
   const deleteStoredProject = useCallback(async (p) => {
     const ok = await confirm({ title: 'Delete this project?', message: `“${p.name}” and its stored IFC copy (unless another project uses it) will be removed from this browser. This cannot be undone.`, confirm: 'Delete', danger: true });
@@ -752,7 +853,8 @@ function App() {
     const refs = projectFileRefs(snapshot);
     const missingFiles = refs.filter(r => !filesRef.current.has(r.sha256));
     download(new Blob([packProject(snapshot, filesRef.current)], { type: 'application/zip' }), `${safeFileName(project.name)}.bim2reuse.zip`, 'application/zip');
-    toast({ kind: missingFiles.length ? 'warn' : 'ok', msg: 'Project package exported', sub: missingFiles.length ? `${plural(missingFiles.length, 'evidence file')} could not be found and ${missingFiles.length === 1 ? 'is' : 'are'} not included` : `project.json, the source IFC${refs.length > 1 ? ` and ${plural(refs.length - 1, 'evidence file')}` : ''}` });
+    const nModels = refs.filter(r => r.kind === 'model').length;
+    toast({ kind: missingFiles.length ? 'warn' : 'ok', msg: 'Project package exported', sub: missingFiles.length ? `${plural(missingFiles.length, 'file')} could not be found and ${missingFiles.length === 1 ? 'is' : 'are'} not included` : `project.json${nModels ? ', the source IFC' : ', the building survey'}${refs.length > nModels ? ` and ${plural(refs.length - nModels, 'document')}` : ''}` });
   }, [model, registry, project, viewerState, toast]);
 
   const screenshot = useCallback(() => {
@@ -774,9 +876,14 @@ function App() {
       { label: 'Selected elements (CSV)', sub: sel.length ? plural(sel.length, 'element') : 'Nothing selected', icon: Icons.Check, disabled: !sel.length, run: () => exportElements(model, sel, 'csv', toast, 'selection') },
       { sep: true },
       { label: '3D view screenshot (PNG)', icon: Icons.Camera, run: () => { setModule('viewer'); setTimeout(screenshot, 60); } },
-      { label: 'Project package (.zip)', sub: 'project.json + source IFC, to open on another computer', icon: Icons.Package, run: exportPackage },
+      ...(project.survey ? [
+        { sep: true },
+        { label: 'Survey components (CSV)', sub: `${plural(project.survey.components.length, 'component')} with provenance`, icon: Icons.Table, run: () => { download(surveyComponentsCsv(project.survey), `${safeFileName(project.name)}-survey-components.csv`, 'text/csv'); toast({ kind: 'ok', msg: 'Survey CSV exported' }); } },
+        { label: 'Building survey (JSON)', sub: 'building, floors, components and document list', icon: Icons.Code, run: () => { download(surveyJson(project.survey, project.name), `${safeFileName(project.name)}-survey.json`, 'application/json'); toast({ kind: 'ok', msg: 'Survey JSON exported' }); } },
+      ] : []),
+      { label: 'Project package (.zip)', sub: project.models.length ? 'project.json + source IFC, to open on another computer' : 'project.json + survey documents, to open on another computer', icon: Icons.Package, run: exportPackage },
     ];
-  }, [summary, model, viewerState.selectedIds, toast, screenshot, exportPackage, setModule]);
+  }, [summary, model, viewerState.selectedIds, toast, screenshot, exportPackage, setModule, project.survey, project.name, project.models.length]);
 
   // Drag a file onto the page at any time.
   useEffect(() => {
@@ -785,12 +892,14 @@ function App() {
       if (!e.dataTransfer?.files?.length) return;
       e.preventDefault();
       const f = e.dataTransfer.files[0];
-      if (/\.zip$/i.test(f.name)) importPackage(f); else loadIfcFile(f, 'Dropped');
+      if (/\.zip$/i.test(f.name)) importPackage(f);
+      else if (/\.ifc$/i.test(f.name) || !project.survey) loadIfcFile(f, 'Dropped');
+      else surveyUiRef.current?.addDocuments([...e.dataTransfer.files]);
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('drop', drop); };
-  }, [loadIfcFile, importPackage]);
+  }, [loadIfcFile, importPackage, !!project.survey]);
 
   // Warn before closing the tab with unsaved work.
   useEffect(() => {
@@ -828,11 +937,11 @@ function App() {
   const selectedGid = useMemo(() => {
     if (!model || viewerState.selectedIds.size === 0) return null;
     const el = model.byId.get([...viewerState.selectedIds][viewerState.selectedIds.size - 1]);
-    return el ? el.globalId || null : null;
+    return el ? componentIdOf(el) : null;
   }, [model, viewerState.selectedIds]);
   useEffect(() => {
     if (module !== 'bank' || !selectedGid) return;
-    const it = bankItems.find(i => i.globalId === selectedGid);
+    const it = bankItems.find(i => bankItemRef(i) === selectedGid);
     if (it) setBkActive(it.id);
   }, [selectedGid, module]);
   // Deconstruction: while a task waits for a pick, the next selected element becomes its
@@ -863,6 +972,13 @@ function App() {
     const ids = gids.map(g => registry.expressIdOfGlobalId(g)).filter(x => x != null);
     if (ids.length) isolateHere(ids);
   }, [registry, isolateHere]);
+
+  // ---- Building survey workspace (Workflow 2) ------------------------------------------------
+  const surveyUi = useSurveyWorkspace({
+    active: module === 'survey' && !!survey && !!model, project, setSurvey, setProject, model, viewerRef, viewerState, dispatch, toast, confirm,
+    addFile, openFile, getFileBytes, passports, passportRecords, setPassportRecord, onZoomTo, theme,
+  });
+  surveyUiRef.current = surveyUi;
 
   // ---- Report context and Overview figures -------------------------------------------------
   const reportCtx = useMemo(() => (model && summary ? {
@@ -1114,6 +1230,7 @@ function App() {
           : dirty ? { state: 'dirty', text: 'Unsaved changes' }
             : { state: 'ok', text: `${saved.auto ? 'Autosaved' : 'Saved'} ${formatTime(saved.at)}` };
   const processing = loading ? { state: 'busy', text: `Parsing ${Math.round(loading.progress * 100)}%`, title: loading.phase }
+    : model && model.isSurvey ? { state: 'ok', text: 'Survey ready', title: `Building survey: ${plural(survey.components.length, 'component')} on ${plural(survey.floors.length, 'floor')}` }
     : model && !secondaryReady ? { state: 'busy', text: 'Indexing properties' }
       : model ? { state: 'ok', text: 'Model ready', title: `${model.fileName}: geometry, properties and relationships indexed` } : null;
   const saveInfo = saved ? `${formatWhen(saved.at.toISOString())}${saved.auto ? ' (autosave)' : ''}${dirty ? ', with unsaved changes since' : ''}` : 'Not saved yet';
@@ -1132,8 +1249,12 @@ function App() {
   let page = null;
   if (module === 'overview') {
     page = model && summary
-      ? <ProjectDashboard project={project} model={model} summary={summary} spatial={spatial} saveInfo={saveInfo} onOpenModule={setModule} onShowIds={showInViewer} stats={workflow} />
-      : <StartPage samples={SAMPLES} onImport={onImport} onLoadSample={loadSample} onLoadFile={loadIfcFile} recent={recent} storeError={storeError} onOpenProject={openStoredProject} onDeleteProject={deleteStoredProject} onOpenModule={setModule} />;
+      ? (model.isSurvey
+        ? <SurveyDashboard project={project} model={model} summary={summary} saveInfo={saveInfo} onOpenModule={setModule} onShowIds={showInViewer} stats={workflow} />
+        : <ProjectDashboard project={project} model={model} summary={summary} spatial={spatial} saveInfo={saveInfo} onOpenModule={setModule} onShowIds={showInViewer} stats={workflow} />)
+      : <StartPage samples={SAMPLES} onImport={onImport} onLoadSample={loadSample} onLoadFile={loadIfcFile} recent={recent} storeError={storeError} onOpenProject={openStoredProject} onDeleteProject={deleteStoredProject} onOpenModule={setModule} onNewSurvey={() => setModal('new-survey')} onOpenDemo={openDemoSurvey} demo={DEMO_SURVEY} />;
+  } else if (module === 'survey' && !survey) {
+    page = <SurveyIntro hasModel={!!model} onNew={() => setModal('new-survey')} onAdd={() => setModal('add-survey')} onDemo={openDemoSurvey} />;
   } else if (module === 'settings') {
     page = <SettingsPage prefs={prefs} setPrefs={setPrefs} themePref={themePref} setThemePref={setThemePref} onClearProjects={clearAllProjects} toast={toast}
       onResetLayout={() => { setLayout(DEFAULT_LAYOUT); setViewLayout('3d'); toast({ kind: 'ok', msg: 'Layout reset' }); }} />;
@@ -1149,7 +1270,7 @@ function App() {
         model={model}
         project={project}
         saveStatus={saveStatus}
-        onRename={(name) => setProject(p => ({ ...p, name }))}
+        onRename={(name) => setProject(p => ({ ...p, name, survey: p.survey && !p.survey.building.name ? { ...p.survey, building: { ...p.survey.building, name } } : p.survey }))}
         onNew={newProject}
         onOpen={() => setModal('open')}
         onSave={() => saveProject()}
@@ -1164,6 +1285,7 @@ function App() {
         onToggleTheme={() => setThemePref(theme === 'dark' ? 'light' : 'dark')}
         onLoadSample={loadSample}
         onHome={() => setModule('overview')}
+        onOpenDemo={openDemoSurvey}
       />
       <input ref={fileInputRef} type="file" accept=".ifc" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; await loadIfcFile(f); }} />
 
@@ -1187,19 +1309,19 @@ function App() {
               activeRow={matRow} setActiveRow={setMatRow} collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} toast={toast} passportOf={passportOf} assessmentOf={assessmentOf} />
           )}
 
-          {module === 'passports' && model && <PassportList passports={passports} selectedGid={selectedPassport ? selectedPassport.globalId : null} filter={ppFilter} setFilter={setPpFilter}
+          {module === 'passports' && model && <PassportList passports={passports} selectedGid={selectedPassport ? selectedPassport.componentId : null} filter={ppFilter} setFilter={setPpFilter}
             onSelect={(p) => { dispatch({ type: 'select', ids: [p.expressId] }); onZoomTo([p.expressId]); }} />}
           {module === 'passports' && model && (
-            <PassportEditor passport={selectedPassport} record={selectedPassport ? passportRecords[selectedPassport.globalId] || null : null}
-              setRecord={(fn) => selectedPassport && setPassportRecord(selectedPassport.globalId, fn)} model={model} onZoomTo={onZoomTo} dispatch={dispatch} toast={toast} confirm={confirm}
+            <PassportEditor passport={selectedPassport} record={selectedPassport ? passportRecords[selectedPassport.componentId] || null : null}
+              setRecord={(fn) => selectedPassport && setPassportRecord(selectedPassport.componentId, fn)} model={model} onZoomTo={onZoomTo} dispatch={dispatch} toast={toast} confirm={confirm}
               addFile={addFile} openFile={openFile} projectName={project.name} onOpenModule={setModule} />
           )}
           {module === 'assessment' && model && <AssessmentSidebar assessment={assessment} config={assessConfig} setConfig={setAssessConfig} filter={asFilter} setFilter={setAsFilter} onShowIds={isolateHere} theme={theme} />}
           {module === 'assessment' && model && (
             <AssessmentPanel assessment={assessment} config={assessConfig} model={model} filter={asFilter} setFilter={setAsFilter} viewerState={viewerState} dispatch={dispatch} onZoomTo={onZoomTo}
-              collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} toast={toast} projectName={project.name} activeGid={asActive || (selectedPassport && selectedPassport.globalId)} setActiveGid={setAsActive} />
+              collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} toast={toast} projectName={project.name} activeGid={asActive || (selectedPassport && selectedPassport.componentId)} setActiveGid={setAsActive} />
           )}
-          {module === 'assessment' && model && <AssessmentDetail result={assessment && selectedPassport ? assessment.byGid.get(selectedPassport.globalId) : null} theme={theme} onOpenPassport={() => setModule('passports')} />}
+          {module === 'assessment' && model && <AssessmentDetail result={assessment && selectedPassport ? assessment.byGid.get(selectedPassport.componentId) : null} theme={theme} onOpenPassport={() => setModule('passports')} />}
 
           {module === 'deconstruction' && model && deconAnalysis && <DeconSidebar model={model} plan={decon} setPlan={setDecon} analysis={deconAnalysis} warnings={deconWarnings} playStage={playStage} setPlayStage={setPlayStage} onShowGids={showGids} toast={toast} />}
           {module === 'deconstruction' && model && deconAnalysis && (
@@ -1222,6 +1344,10 @@ function App() {
           )}
           {module === 'matching' && model && <MatchingDetail items={bankItems} matching={matching} setMatching={setMatching} active={mtActive} setActive={setMtActive} registry={registry} dispatch={dispatch} onZoomTo={onZoomTo} onEditRequirement={setReqEdit} confirm={confirm} />}
 
+          {module === 'survey' && model && survey && <SurveySidebar ui={surveyUi} />}
+          {module === 'survey' && model && survey && <SurveyInspector ui={surveyUi} />}
+          {module === 'survey' && model && survey && <SurveyPanel ui={surveyUi} collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} />}
+
           {isViewer && <LeftSidebar model={model} viewerState={viewerState} dispatch={dispatch} onPick={onPick} onZoomTo={onZoomTo} onContext={onContext} onSaveView={onSaveView} onRestoreView={onRestoreView} tab={leftTab} setTab={setLeftTab} />}
 
           {/* One ThreeViewer for the whole session: page modules cover it, they never unmount it. */}
@@ -1238,6 +1364,7 @@ function App() {
             layout={viewLayout} layoutSwitch={layoutSwitch} planElement={planElement}
             colorMode={colorMode} setColorMode={setColorMode} colorModes={colorModes} modeColors={modeColors} modeLegend={isWorkspace ? modeLegend : null} modeOpacity={modeOpacity}
             hint={null}
+            toolbar={module === 'survey' && model && survey ? <SurveyToolbar ui={surveyUi} /> : null}
           />
 
           {isViewer && <Inspector model={model} viewerState={viewerState} dispatch={dispatch} onZoomTo={onZoomTo} toast={toast} onSelect={(id) => dispatch({ type: 'select', ids: [id] })} />}
@@ -1245,14 +1372,14 @@ function App() {
           {isViewer && (
             <BottomPanel
               model={model} viewerState={viewerState} dispatch={dispatch} log={log} onPick={onPick} onZoomTo={onZoomTo} toast={toast}
-              collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} viewerRef={viewerRef} secondaryReady={secondaryReady}
+              collapsed={layout.bottomCollapsed} onToggleCollapsed={toggleBottom} viewerRef={viewerRef} secondaryReady={modelReady}
             />
           )}
 
-          {isWorkspace && !model && !loading && (
+          {isWorkspace && !model && !loading && module !== 'survey' && (
             <div className="viewer-empty">
-              <EmptyState icon={Icons.Cube} title="No model open" action={<div className="empty-actions"><button type="button" className="btn btn-primary" onClick={onImport}><Icons.Upload size={15} /> Import IFC</button><button type="button" className="btn" onClick={() => setModal('open')}><Icons.FolderOpen size={15} /> Open project</button><button type="button" className="btn btn-ghost" onClick={() => loadSample(SAMPLES[0])}>Open a sample</button></div>}>
-                Import an IFC file, or reopen a project saved in this browser.
+              <EmptyState icon={Icons.Cube} title="No model open" action={<div className="empty-actions"><button type="button" className="btn btn-primary" onClick={onImport}><Icons.Upload size={15} /> Import IFC</button><button type="button" className="btn" onClick={() => setModal('new-survey')}><Icons.Building size={15} /> Survey a building</button><button type="button" className="btn" onClick={() => setModal('open')}><Icons.FolderOpen size={15} /> Open project</button><button type="button" className="btn btn-ghost" onClick={() => loadSample(SAMPLES[0])}>Open a sample</button></div>}>
+                Import an IFC file, start a building survey of an existing building without BIM, or reopen a project saved in this browser.
               </EmptyState>
             </div>
           )}
@@ -1265,6 +1392,8 @@ function App() {
       {modal === 'help' && <HelpDialog onClose={() => setModal(null)} onOpenModule={setModule} />}
       {modal === 'open' && <OpenProjectDialog onClose={() => setModal(null)} onOpen={openStoredProject} onImportPackage={importPackage} onDelete={deleteStoredProject} />}
       {modal === 'saveas' && <SaveAsDialog initial={`${project.name} (copy)`} onClose={() => setModal(null)} onSave={async (name) => { setModal(null); await saveProject({ asName: name }); }} />}
+      {modal === 'new-survey' && <NewSurveyDialog onClose={() => setModal(null)} onCreate={startSurveyProject} />}
+      {modal === 'add-survey' && <NewSurveyDialog adding onClose={() => setModal(null)} onCreate={addSurveyToProject} />}
       {reqEdit && <RequirementDialog initial={reqEdit} onClose={() => setReqEdit(null)} onSave={saveRequirement} />}
       <ConfirmDialog request={confirmReq} />
       {model && <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} dispatch={dispatch} onZoomTo={onZoomTo} model={model} toast={toast} />}

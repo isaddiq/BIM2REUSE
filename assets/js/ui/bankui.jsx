@@ -36,12 +36,12 @@ function bankModeData(items, model, theme) {
   if (!model) return { colors: null, legend: null };
   const pal = BANK_COLORS[theme] || BANK_COLORS.light;
   const byGid = new Map();
-  items.forEach(it => { if (it.globalId) byGid.set(it.globalId, it); });
+  items.forEach(it => { const r = bankItemRef(it); if (r) byGid.set(r, it); });
   const colors = new Map();
   const groups = new Map();
   model.elements.forEach(el => {
     if (!el.geometry || !isPhysicalElement(el)) return;
-    const it = el.globalId ? byGid.get(el.globalId) : null;
+    const it = componentIdOf(el) ? byGid.get(componentIdOf(el)) : null;
     const k = it ? it.availability : 'none';
     colors.set(el.expressId, pal[k] || pal.none);
     if (!groups.has(k)) groups.set(k, []);
@@ -69,7 +69,7 @@ function modelBankCandidates(model, passports, assessment, scope) {
     if (component === 'other') return;
     if (scope === 'passports' && !p.stored) return;
     if (scope === 'reuse') {
-      const r = assessment && assessment.byGid.get(p.globalId);
+      const r = assessment && assessment.byGid.get(p.componentId);
       if (!r || !['direct-reuse', 'refurbishment'].includes(r.outcome)) return;
     }
     out.push({ passport: p, el, component });
@@ -85,7 +85,7 @@ function filterBankItems(items, filter) {
     if (filter.materialCategory && (it.materialCategory || 'unclassified') !== filter.materialCategory) return false;
     if (filter.source && (it.sourceBuilding || '—') !== filter.source) return false;
     if (!q) return true;
-    return `${it.name} ${it.material || ''} ${it.globalId || ''} ${it.crossSection || ''} ${it.grade || ''} ${it.sourceBuilding || ''} ${it.id}`.toLowerCase().includes(q);
+    return `${it.name} ${it.material || ''} ${bankItemRef(it) || ''} ${it.crossSection || ''} ${it.grade || ''} ${it.sourceBuilding || ''} ${it.id}`.toLowerCase().includes(q);
   });
 }
 
@@ -166,7 +166,7 @@ function BankSidebar({ items, setItems, model, passports, assessment, filter, se
   const compCounts = useMemo(() => { const c = {}; candidates.forEach(x => { c[x.component] = (c[x.component] || 0) + 1; }); return c; }, [candidates]);
   const picked = component ? candidates.filter(c => c.component === component) : candidates;
   const inBank = useMemo(() => new Set(items.map(i => i.id)), [items]);
-  const newCount = picked.filter(c => !inBank.has(`bank-${c.passport.globalId}`)).length;
+  const newCount = picked.filter(c => !inBank.has(`bank-${c.passport.componentId}`)).length;
 
   const stateCounts = useMemo(() => { const c = {}; items.forEach(i => { c[i.availability] = (c[i.availability] || 0) + 1; }); return c; }, [items]);
   const units = items.reduce((a, i) => a + (i.quantity || 1), 0);
@@ -217,7 +217,7 @@ function BankSidebar({ items, setItems, model, passports, assessment, filter, se
     const on = filter.availability === id;
     setFilter(f => ({ ...f, availability: on ? null : id }));
     if (on || !registry) return;
-    const ids = items.filter(i => i.availability === id && i.globalId).map(i => registry.expressIdOfGlobalId(i.globalId)).filter(x => x != null);
+    const ids = items.filter(i => i.availability === id && bankItemRef(i)).map(i => registry.expressIdOfGlobalId(bankItemRef(i))).filter(x => x != null);
     if (ids.length) onShowIds(ids);
   };
 
@@ -325,10 +325,10 @@ function BankPanel({ items, setItems, filter, setFilter, activeId, setActiveId, 
   const [sort, onSort] = useSort({ key: null, dir: 1 });
   const rows = useMemo(() => filterBankItems(items, filter), [items, filter]);
   const sel = viewerState.selectedIds;
-  const idOf = (it) => (registry && it.globalId ? registry.expressIdOfGlobalId(it.globalId) : null);
+  const idOf = (it) => (registry && bankItemRef(it) ? registry.expressIdOfGlobalId(bankItemRef(it)) : null);
   const len = (v, src) => (v == null ? <span className="qty-missing">Missing</span> : <span className="qty mono" data-source={src}>{fmtNum(v, 3)}</span>);
   const cols = [
-    { key: 'name', label: 'Component', width: 'minmax(150px, 1.4fr)', render: it => <span title={it.globalId || it.id}>{it.name}</span>, sort: it => it.name },
+    { key: 'name', label: 'Component', width: 'minmax(150px, 1.4fr)', render: it => <span title={bankItemRef(it) || it.id}>{it.name}</span>, sort: it => it.name },
     { key: 'component', label: 'Type', width: 90, render: it => COMPONENT_LABEL[it.component] || it.component, sort: it => it.component },
     { key: 'material', label: 'Material', width: 'minmax(110px, 1fr)', render: it => <span title={CATEGORY_LABEL[it.materialCategory] || ''}>{it.material || <span className="qty-missing">Missing</span>}</span>, sort: it => it.material },
     { key: 'length', label: 'Length m', width: 82, align: 'end', render: it => len(it.length, it.lengthSource), sort: it => it.length },
@@ -429,8 +429,8 @@ function BankDetail({ item, setItems, passports, registry, onZoomTo, dispatch, o
   }
   const now = () => new Date().toISOString();
   const set = (patch) => setItems(list => list.map(i => (i.id === item.id ? { ...i, ...patch, editedAt: now() } : i)));
-  const expressId = registry && item.globalId ? registry.expressIdOfGlobalId(item.globalId) : null;
-  const passport = item.globalId && passports ? passports.get(item.globalId) : null;
+  const expressId = registry && bankItemRef(item) ? registry.expressIdOfGlobalId(bankItemRef(item)) : null;
+  const passport = bankItemRef(item) && passports ? passports.get(bankItemRef(item)) : null;
   const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
   const remove = async () => {
     const ok = await confirm({ title: 'Remove this record?', message: `${item.name} is removed from the bank. Its passport and the model are not changed.`, confirm: 'Remove', danger: true });
@@ -445,6 +445,7 @@ function BankDetail({ item, setItems, passports, registry, onZoomTo, dispatch, o
           <span>{item.sourceBuilding || 'Unknown source building'}</span>
           <span>{BANK_ORIGIN_LABEL[item.origin] || item.origin}{item.importedFrom ? `: ${item.importedFrom}` : ''}</span>
           {item.globalId && <span className="mono" title="IFC GlobalId">{item.globalId}</span>}
+          {!item.globalId && item.componentId && <span className="mono" title="Survey component ID (no IFC GlobalId)">{item.componentId}</span>}
         </div>
         <div className="insp-actions">
           {expressId != null && <button type="button" className="btn btn-sm" onClick={() => { dispatch({ type: 'select', ids: [expressId] }); onZoomTo([expressId]); }}><Icons.Focus size={14} /> Show in 3D</button>}

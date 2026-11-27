@@ -7,7 +7,7 @@
   </picture>
 </a>
 
-**Turn IFC building models into traceable material reuse decisions, in the browser.**
+**Turn buildings, with or without a BIM model, into traceable material reuse decisions, in the browser.**
 
 [![Open the app](https://img.shields.io/badge/Open%20the%20app-isaddiq.github.io%2FBIM2Reuse-16804a?style=for-the-badge&logo=githubpages&logoColor=white)](https://isaddiq.github.io/BIM2Reuse/)
 
@@ -15,7 +15,7 @@
 [![IFC](https://img.shields.io/badge/IFC-2x3%20%C2%B7%204%20%C2%B7%204.3-e0560f?style=flat-square)](https://technical.buildingsmart.org/standards/ifc/)
 [![No upload](https://img.shields.io/badge/Files-stay%20on%20your%20device-555?style=flat-square)](#privacy)
 
-[Workflow](#workflow) · [Modules](#modules) · [Try the sample](#try-the-sample) · [Your own data](#your-own-data) · [Principles](#principles-and-limitations) · [Citation](#citation)
+[Workflow](#workflow) · [Buildings without BIM](#existing-buildings-without-bim) · [Modules](#modules) · [Try the samples](#try-the-samples) · [Your own data](#your-own-data) · [Principles](#principles-and-limitations) · [Citation](#citation)
 
 <br />
 
@@ -26,7 +26,7 @@
 
 </div>
 
-**BIM2REUSE** is a free, open-source web application for circular construction. Open the IFC model of an existing building, and BIM2REUSE builds the information that reuse decisions need:
+**BIM2REUSE** is a free, open-source web application for circular construction. Open the IFC model of an existing building, or survey a building that has no model, and BIM2REUSE builds the information that reuse decisions need:
 
 - what the building is made of;
 - which components could be reused;
@@ -34,15 +34,22 @@
 - where they could go in a new building;
 - what that saves in carbon and cost.
 
-Every record stays linked to the IFC GlobalId of the element it describes.
+Every record stays linked to the component it describes: the IFC GlobalId of a model element, or the component ID of a surveyed one.
 
-<a id="privacy"></a>🔒 **Private by design.** There is no server. IFC files are read on your device with web-ifc (WebAssembly), and projects are saved in your browser. Nothing you open or enter is uploaded.
+<a id="privacy"></a>🔒 **Private by design.** There is no server. IFC files are read on your device with web-ifc (WebAssembly), and projects, documents and photographs are saved in your browser. Nothing you open or enter is uploaded.
 
 ## Workflow
 
+A project starts in one of two ways:
+
+- **Workflow 1: Import IFC model.** Open an IFC2x3, IFC4 or IFC4.3 file.
+- **Workflow 2: Existing building without BIM.** Record the building in **Building Survey** from site visits, drawings and photographs.
+
+Both lead to the same circular modules:
+
 | Step | Module | Result |
 | --- | --- | --- |
-| 1. Explore | **IFC Viewer** | The model in 3D and on floor plans, with every element's data |
+| 1. Explore | **IFC Viewer** or **Building Survey** | The model in 3D and on floor plans, or a surveyed building with a simplified 3D model |
 | 2. Inventory | **Materials** | Materials, volumes and masses of every element, with the source of each value |
 | 3. Document | **Passports** | A material passport for each component |
 | 4. Assess | **Assessment** | A screening of each component's reuse pathway |
@@ -54,6 +61,40 @@ Every record stays linked to the IFC GlobalId of the element it describes.
 
 The **Overview** shows the model at a glance, how ready its data is for each module, and the status of every module for the open project.
 
+## Existing buildings without BIM
+
+<img src="assets/images/readme/survey.webp" alt="Building Survey: building information, the simplified 3D model coloured by survey information, the component editor and the list of surveyed components" width="100%" />
+
+Choose **Start a building survey** on the start page, then enter the building name, address, construction year and number of floors. **Building Survey** then has four parts:
+
+- **Building, floors and documents** (left): building information, floors with their elevation and height, and the files you collect, such as floor plans, CAD drawings, PDFs, photographs and inventories.
+- **3D model** (centre): pick a component type and click on the active floor:
+  - columns, doors and windows take one click;
+  - walls and beams take two (Shift keeps them straight);
+  - slabs and roofs take two opposite corners.
+
+  Doors and windows snap into the nearest wall. Each component is drawn as a box from its dimensions and position.
+- **Component** (right): dimensions, cross-section, material, grade and density, condition, connections and reuse potential, plus photographs and inspection documents.
+- **Surveyed components** (bottom): every component with what is still missing.
+
+**Tracing floor plans.** Upload a plan image (PNG, JPG, WebP, GIF or SVG) to a floor, and **Calibrate** it by clicking two points of a known distance. Components placed on it are recorded as *taken from drawings*. PDF and CAD files are kept as documents; export a plan page as an image to trace it.
+
+**Importing an inventory.** Import a CSV or JSON list of components (one row each, or a quantity column). Components without coordinates are laid out in rows on their floor and marked as placed automatically. The [example inventory](assets/samples/survey-example-inventory.csv) shows every column.
+
+**Where each value comes from.** Every value records its provenance: *manual*, *taken from drawings*, *imported*, *estimated* or *inspection verified*. Dimensions you have not measured keep the component type's placeholder and are marked estimated. Missing information is flagged in red, never filled in. The **Survey** colour mode shows which components are missing information, carry estimates, or are fully verified.
+
+**Identity.** Each surveyed component gets a persistent component ID (`B2R-…`). IFC GlobalIds are kept for real IFC elements only.
+
+**Using the other modules.** Materials, Passports, Assessment, Deconstruction, Material Bank, Reuse Matching, Carbon & Cost and Reports work on surveyed components as they do on IFC elements:
+
+- Photographs and inspection documents attached to a component become evidence in its passport.
+- Approval for reuse still needs a completed inspection, verified technical status and an inspection record, test or certificate.
+- Doors and windows recorded in a wall give the same deconstruction suggestions as IFC fill relations.
+
+**Adding a model later.** Import an IFC file into a survey project and the survey stays, with its components shown next to the IFC elements. Link a surveyed component to the IFC element it is (pick it in 3D or paste its GlobalId). Its survey values, passport, evidence, deconstruction task and bank records then move to that element, so nothing is lost.
+
+> The 3D model is a simplified reconstruction from the dimensions and positions you enter. It is not a measured survey: BIM2REUSE does not recognise elements in images and does not reconstruct buildings from scans or photographs.
+
 ## Modules
 
 ### IFC Viewer
@@ -64,7 +105,7 @@ The **Overview** shows the model at a glance, how ready its data is for each mod
 - **Browse:** model tree, IFC classes and disciplines, an IFC schema browser, saved views and selection sets.
 - **Inspect** each element: property sets, quantities, materials, type, classification and relationships.
 - **Tools:** search, hide, isolate, X-ray, section box, plan cut, measuring and issue pins.
-- **Colour modes** show each module's data on the model (material, passport, reuse outcome, removal stage, bank availability, matching result), with legends that isolate on click.
+- **Colour modes** show each module's data on the model (material, passport, reuse outcome, removal stage, bank availability, matching result, survey information), with legends that isolate on click.
 
 ### Material inventory
 
@@ -130,9 +171,27 @@ The **Overview** shows the model at a glance, how ready its data is for each mod
 
 The report gives the project identity and the source model with its file hash. For each module it states the method, results, missing information and limitations. Print it to PDF from the browser or save it as HTML.
 
-The **project package** (`.bim2reuse.zip`) holds every record, the source IFC file and attached evidence, so a project can be reopened on another computer.
+The **project package** (`.bim2reuse.zip`) holds every record, the source IFC file, survey documents and attached evidence, so a project can be reopened on another computer.
 
-## Try the sample
+## Try the samples
+
+### Workflow 2: the demo survey
+
+<img src="assets/images/readme/demo-survey.webp" alt="The demo survey of a former post office: 52 surveyed components on two floors with the calibrated floor plan under them" width="100%" />
+
+Choose **Open the demo survey** on the start page (or in Building Survey). The demo is the survey of a fictional building, the *Former Post Office*: two storeys, built in 1968, steel frame. It is a complete project with no IFC model:
+
+- building information, two floors and two calibrated tracing plans;
+- 52 components (columns, beams, slabs, the roof deck, facade walls, a partition, doors and windows in their walls, a stair, a balustrade and radiators), each with dimensions, material, grade, density or mass, condition, connections and reuse potential, and the provenance of every value;
+- documents: a structural section, a condition survey report and a hazardous materials screening;
+- passports in progress, and two steel beams approved for reuse with a material test certificate as evidence;
+- confirmed deconstruction dependencies (doors and windows before their walls), with durations and review flags on the frame.
+
+Download it as a package: [demo-survey.bim2reuse.zip](assets/samples/demo-survey.bim2reuse.zip).
+
+> The building, the reports and the test certificate are fictional, made to demonstrate the workflow.
+
+### Workflow 1: the sample model
 
 Choose **Try a sample model** on the start page. The sample is the *Research centre*, a four-storey building generated for BIM2REUSE (IFC4, MIT licence). It contains every kind of data the modules use:
 
@@ -175,11 +234,13 @@ Example files for the other modules come with it. Load each one with **Load the 
 | `Pset_ManufacturerTypeInformation` | Passport identification |
 | Survey properties named `ConditionRating`, `VisualInspection`, `InspectionDate`, `ConnectionType`, `Contamination`, `Grade`, `GradeVerified`, `CandidateApplication`, `ApplicationFit`, `VerificationStatus`, `TechnicalDocumentation` (in any property set) | Passports and assessment |
 
+**Building surveys.** A survey inventory is a CSV or JSON file with one row per component. It uses columns such as `type`, `name`, `floor`, `x`, `y`, `length`, `width`, `height`, `material`, `grade`, `condition`, `connection_type`, `reuse_potential` and `provenance`; the [example inventory](assets/samples/survey-example-inventory.csv) lists them all. Survey documents and photographs can be any file type.
+
 **CSV files.** The bank, requirement and factor imports accept comma- or semicolon-separated files with a header row. Lengths are in metres and masses in kilograms. Rows that fail validation are listed with the reason; nothing is guessed. The example files above show every column.
 
 ## Principles and limitations
 
-- **No invented data.** Missing values stay missing. Each value records where it came from: IFC, geometry, an imported file, a manual entry or a verified inspection.
+- **No invented data.** Missing values stay missing. Each value records where it came from: IFC, geometry, drawings, an imported file, a manual entry, an estimate or a verified inspection.
 - **Suggestions are not decisions.** Dependencies, densities and compatibility rest on data a person confirms or supplies.
 - **Honest optimisation.** The solver status is reported as returned, and every solution is checked against the rules before it is shown.
 - **Stated limits:**
@@ -187,6 +248,7 @@ Example files for the other modules come with it. Load each one with **Load the 
   - The carbon comparison is not a full life-cycle assessment to EN 15978.
   - The deconstruction plan is preliminary. Structural removal, temporary works and site safety need qualified professional review.
   - Compatibility uses only the criteria supplied; structural reuse needs professional verification.
+  - The 3D model of a surveyed building is a simplified manual reconstruction, not a measured survey.
 
 The method draws on IFC (ISO 16739), EN 15804, ISO 14040/14044, ISO 22057 and ISO 59020. BIM2REUSE does not claim compliance with these standards.
 
@@ -219,7 +281,7 @@ The workflow builds on the D5 digital circular workflow: [Five digital steps tow
 
 ## Licence
 
-The code and the Research centre sample are released under the [MIT licence](LICENSE).
+The code, the Research centre sample and the demo survey are released under the [MIT licence](LICENSE).
 
 - **HiGHS** (`assets/vendor/highs/`) is MIT licensed.
 - **Icons** in `assets/icons/flaticon/` are credited in their `ATTRIBUTION.md`.

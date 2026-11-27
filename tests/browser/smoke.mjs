@@ -455,6 +455,139 @@ async function main() {
     await clickNav('Settings');
     await clickButton('Light', '.settings-card');
 
+    // 10. Workflow 2: an existing building without BIM
+    const confirmIfAsked = async () => { await sleep(200); if (await page.$('.modal .btn-danger-solid')) await page.click('.modal .btn-danger-solid'); };
+    await clickNav('Building Survey');
+    await page.waitForSelector('.sv-intro', { timeout: 5000 }).catch(() => {});
+    check('Building Survey offers to start a survey or add one to the IFC project', !!(await page.$('.sv-intro')) && (await text()).includes('Add a survey to this project'));
+    await clickButton('Start a building survey', '.sv-intro');
+    await page.waitForSelector('.sv-new', { timeout: 5000 });
+    await clickButton('Start the survey', '.sv-new');
+    await sleep(200);
+    check('the new survey form asks for a building name before starting', (await text()).includes('Name the building.'));
+    await page.type('.sv-new input', 'Former post office');
+    await clickButton('Start the survey', '.sv-new');
+    await confirmIfAsked();
+    await page.waitForSelector('.sv-toolbar', { timeout: 10000 });
+    const sv0 = await page.evaluate(() => ({ chip: document.querySelector('.proc-chip')?.textContent || '', floors: document.querySelectorAll('.sv-toolbar select[aria-label="Active floor"] option').length, rows: document.querySelectorAll('.inv-panel .dt-row').length }));
+    check('a survey project opens the survey workspace with its floors and no IFC model', /Survey ready/.test(sv0.chip) && sv0.floors === 2 && sv0.rows === 0, JSON.stringify(sv0));
+    const canvasBox = await page.$eval('.viewer-canvas', c => { const r = c.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await clickButton('Wall', '.sv-toolbar');
+    await page.mouse.click(canvasBox.x - 140, canvasBox.y + 20);
+    await sleep(150);
+    await page.mouse.click(canvasBox.x + 140, canvasBox.y + 20);
+    await sleep(300);
+    await clickButton('Column', '.sv-toolbar');
+    await page.mouse.click(canvasBox.x, canvasBox.y - 60);
+    await sleep(300);
+    await page.keyboard.press('Escape');
+    const placed = await page.evaluate(() => ({ rows: document.querySelectorAll('.inv-panel .dt-row').length, meshes: window.__viewer ? window.__viewer.meshes.size : 0, insp: document.querySelector('.right-side .insp-guid')?.textContent || '', tool: !!document.querySelector('.sv-tool-hint') }));
+    check('clicking in 3D places a wall (two clicks) and a column (one click)', placed.rows === 2 && placed.meshes === 2, JSON.stringify(placed));
+    check('the placed component is selected with a persistent component ID, not a GlobalId', /^B2R-[0-9A-Z]{10}/.test(placed.insp), placed.insp);
+    check('Esc stops placing', !placed.tool);
+    const camBefore = await page.evaluate(() => JSON.stringify(window.__viewer.getCameraState()));
+    await page.evaluate(() => [...document.querySelectorAll('.sv-tabs button')].find(b => b.textContent === 'Import').click());
+    await clickButton('Load the example', '.left-side');
+    await page.waitForFunction(() => document.querySelectorAll('.inv-panel .dt-row').length > 10, { timeout: 15000 }).catch(() => {});
+    const imported = await page.evaluate(() => ({ count: document.querySelector('.inv-panel .inv-count')?.textContent || '', meshes: window.__viewer.meshes.size, cam: JSON.stringify(window.__viewer.getCameraState()) }));
+    check('the example inventory imports 25 components and draws them without reloading the view', /27 components/.test(imported.count) && imported.meshes === 27 && imported.cam === camBefore, `${imported.count}, ${imported.meshes} meshes`);
+    await page.evaluate(() => { const b = document.querySelector('.inv-panel input[type=checkbox]'); if (b && !b.checked) b.click(); });
+    await sleep(200);
+    const withMissing = await page.$$eval('.inv-panel .dt-row', r => r.length);
+    check('components with missing information can be listed', withMissing > 0 && withMissing < 27, `${withMissing} with missing information`);
+    await page.evaluate(() => { const b = document.querySelector('.inv-panel input[type=checkbox]'); if (b && b.checked) b.click(); });
+    await page.type('.inv-panel input[aria-label="Search components"]', 'Partition P1');
+    await sleep(200);
+    await page.evaluate(() => [...document.querySelectorAll('.inv-panel .dt-row')].find(r => r.textContent.includes('Partition P1')).click());
+    await sleep(300);
+    await page.evaluate(() => { const i = document.querySelector('.inv-panel input[aria-label="Search components"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); });
+    const flagText = await page.evaluate(() => document.querySelector('.sv-flags')?.innerText || '');
+    check('the inspector flags missing information instead of filling it in', /Missing: .*Condition rating/.test(flagText), flagText.replace(/\s+/g, ' ').slice(0, 100));
+    await page.evaluate(() => { const s = [...document.querySelectorAll('.right-side .sv-field')].find(f => f.textContent.startsWith('Condition rating')).querySelector('select'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, '3'); s.dispatchEvent(new Event('change', { bubbles: true })); });
+    await sleep(300);
+    const prov = await page.evaluate(() => [...document.querySelectorAll('.right-side .sv-field')].find(f => f.textContent.startsWith('Condition rating'))?.querySelector('.sv-prov')?.value || '');
+    check('a value entered in the survey is recorded as manual', prov === 'manual', prov);
+    const svMode = await page.evaluate(() => ({ on: document.querySelector('.cmode-switch [aria-pressed="true"], .cmode [aria-pressed="true"]')?.textContent || '', legend: [...document.querySelectorAll('.mode-legend li')].map(l => l.innerText.replace(/\s+/g, ' ')) }));
+    check('Building Survey colours components by missing and verified information', svMode.legend.some(l => /^Missing information \d/.test(l)), svMode.legend.join(' | '));
+    await shot('09-survey', 'survey.webp');
+
+    await page.evaluate(() => [...document.querySelectorAll('.sv-tabs button')].find(b => b.textContent === 'Documents').click());
+    const docInput = await page.$('.left-side input[type=file][multiple]');
+    await docInput.uploadFile(path.join(ROOT, 'assets/images/og-image.png'));
+    await page.waitForSelector('.sv-doc', { timeout: 10000 }).catch(() => {});
+    check('documents upload into the survey', (await page.$$('.sv-doc')).length === 1);
+    await page.evaluate(() => { const s = document.querySelector('.sv-doc select'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, 'plan'); s.dispatchEvent(new Event('change', { bubbles: true })); });
+    await sleep(100);
+    await page.evaluate(() => { const s = document.querySelectorAll('.sv-doc select')[1]; const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, s.options[s.options.length - 1].value); s.dispatchEvent(new Event('change', { bubbles: true })); });
+    await sleep(100);
+    await clickButton('Trace on', '.left-side');
+    await page.waitForFunction(() => !!window.__viewer.getOverlay('survey-plan'), { timeout: 10000 }).catch(() => {});
+    check('an uploaded image becomes the tracing plan of a floor in 3D', !!(await page.evaluate(() => !!window.__viewer.getOverlay('survey-plan'))));
+
+    await clickNav('Materials');
+    await page.waitForSelector('.inv-panel .dt-row', { timeout: 15000 }).catch(() => {});
+    const svInv = await page.evaluate(() => ({ rows: document.querySelectorAll('.inv-panel .dt-row').length, count: document.querySelector('.inv-panel .inv-count')?.textContent || '', ids: [...document.querySelectorAll('.inv-panel .dt-row')].slice(0, 5).map(r => r.textContent) }));
+    check('the material inventory works without an IFC model', svInv.rows > 10 && svInv.ids.every(t => t.includes('B2R-')), svInv.count);
+    await clickNav('Passports');
+    await sleep(300);
+    await page.evaluate(() => document.querySelector('.left-side .dt-row')?.click());
+    await sleep(400);
+    const ppText = await page.evaluate(() => { const r = document.querySelector('.right-side'); return r ? r.innerText + ' ' + [...r.querySelectorAll('input')].map(i => i.value).join(' ') : ''; });
+    check('passports of surveyed components carry their component ID', /Component ID/.test(ppText) && /PP-B2R-[0-9A-Z]{10}/.test(ppText) && /B2R-[0-9A-Z]{10}/.test(ppText), (ppText.match(/B2R-[0-9A-Z]{10}/) || [''])[0]);
+    for (const m of ['Assessment', 'Deconstruction', 'Material Bank', 'Reuse Matching', 'Carbon & Cost']) {
+      await clickNav(m);
+      await sleep(250);
+    }
+    await clickNav('Reports');
+    await page.waitForSelector('.report-preview iframe', { timeout: 10000 });
+    const svRep = await page.evaluate(() => { const f = document.querySelector('.report-preview iframe'); return (f.contentDocument && f.contentDocument.body.innerText) || f.getAttribute('srcdoc') || ''; });
+    check('the report of a survey project has the building survey section and its limitations', /Building survey/.test(svRep) && /no IFC GlobalIds are assigned/.test(svRep) && /scan-to-BIM/.test(svRep));
+    await clickNav('Overview');
+    await page.waitForSelector('.kpi-v', { timeout: 5000 });
+    const svDash = await page.evaluate(() => ({ head: document.querySelector('.page-sub')?.textContent || '', kpi: document.querySelector('.kpi-v')?.textContent, cards: [...document.querySelectorAll('.module-card .mc-title')].map(x => x.textContent) }));
+    check('Overview of a survey project shows the survey and every circular module', /Existing building without BIM/.test(svDash.head) && svDash.kpi === '27' && svDash.cards[0] === 'Building Survey' && svDash.cards.length === 8, JSON.stringify(svDash));
+    await shot('10-survey-overview');
+
+    await page.keyboard.down('Control'); await page.keyboard.press('s'); await page.keyboard.up('Control');
+    await page.waitForFunction(() => /^Saved/.test(document.querySelector('.save-status')?.textContent || ''), { timeout: 15000 }).catch(() => {});
+    await (await readdir(downloads)).filter(f => f.endsWith('.zip')).reduce((p, f) => p.then(() => rm(path.join(downloads, f))), Promise.resolve());
+    await page.evaluate(() => [...document.querySelectorAll('.topbar button')].find(b => b.textContent.includes('Export')).click());
+    await sleep(200);
+    await clickButton('Project package');
+    let svZip = null;
+    for (let i = 0; i < 40 && !svZip; i++) { await sleep(250); svZip = (await readdir(downloads)).find(f => f.endsWith('.bim2reuse.zip')); }
+    if (svZip) {
+      const W = loadCore();
+      const pkg = await W.unpackProject(new Uint8Array(await readFile(path.join(downloads, svZip))));
+      check('the survey package carries the survey, its documents and no IFC model', pkg.project.workflow === 'survey' && pkg.project.models.length === 0 && pkg.project.survey.components.length === 27 && pkg.files.size === 1 && pkg.missingDocuments.length === 0, svZip);
+    } else check('the survey package carries the survey, its documents and no IFC model', false, 'no download');
+    await page.reload({ waitUntil: 'networkidle0' });
+    await clickNav('Overview');
+    await page.waitForSelector('.recent-open', { timeout: 15000 });
+    await page.evaluate(() => [...document.querySelectorAll('.recent-open')].find(b => b.textContent.includes('Former post office')).click());
+    await page.waitForFunction(() => /Survey ready/.test(document.querySelector('.proc-chip')?.textContent || ''), { timeout: 15000 }).catch(() => {});
+    await clickNav('Building Survey');
+    await page.waitForSelector('.inv-panel .dt-row', { timeout: 10000 }).catch(() => {});
+    const reopened = await page.evaluate(() => ({ count: document.querySelector('.inv-panel .inv-count')?.textContent || '', saved: document.querySelector('.save-status')?.textContent || '' }));
+    check('a survey project reopens from the local store with its components', /27 components/.test(reopened.count) && /^Saved/.test(reopened.saved), JSON.stringify(reopened));
+    if (BANNED.test(await text())) check('no robot wording in Building Survey', false, (await text()).match(BANNED)[0]);
+
+    // 11. The Workflow 2 demo project
+    await page.evaluate(() => [...document.querySelectorAll('.topbar [aria-label="More"]')][0].click());
+    await clickButton('Open demo: building survey', '.topbar');
+    await confirmIfAsked();
+    await page.waitForFunction(() => /Survey ready/.test(document.querySelector('.proc-chip')?.textContent || '') && document.querySelector('.kpi-v')?.textContent === '52', { timeout: 20000 }).catch(() => {});
+    const demo = await page.evaluate(() => ({ title: document.querySelector('.dash-title h1')?.textContent || '', kpi: document.querySelector('.kpi-v')?.textContent }));
+    check('the demo survey opens with its 52 components', /demo survey/.test(demo.title) && demo.kpi === '52', JSON.stringify(demo));
+    await clickNav('Building Survey');
+    await page.waitForFunction(() => !!window.__viewer.getOverlay('survey-plan'), { timeout: 10000 }).catch(() => {});
+    check('the demo draws its calibrated floor plan under the components', await page.evaluate(() => !!window.__viewer.getOverlay('survey-plan') && window.__viewer.meshes.size === 52));
+    await shot('11-demo-survey', 'demo-survey.webp');
+    await clickNav('Passports');
+    await sleep(300);
+    const approvedPp = await page.evaluate(() => [...document.querySelectorAll('.left-side .pp-status')].filter(s => s.textContent.startsWith('Approved')).length);
+    check('the demo has passports approved with evidence', approvedPp === 2, `${approvedPp} approved`);
+
     check('no console errors or failed requests', errors.length === 0, errors.slice(0, 5).join(' | '));
   } finally {
     await browser.close();

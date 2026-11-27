@@ -24,7 +24,7 @@
     } }, /* @__PURE__ */ React.createElement(Icons.Download, { size: 15 }), " Download HTML"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn block-btn", onClick: onExportPackage }, /* @__PURE__ */ React.createElement(Icons.Package, { size: 15 }), " Project package (.zip)"))), /* @__PURE__ */ React.createElement("section", { className: "card report-preview", "aria-label": "Report preview" }, chosen.length ? /* @__PURE__ */ React.createElement("iframe", { title: "Report preview", sandbox: "", srcDoc: html }) : /* @__PURE__ */ React.createElement("p", { className: "muted pad" }, "Choose at least one section.")))));
   }
   function ModuleCards({ stats, onOpenModule }) {
-    const ids = ["materials", "passports", "assessment", "deconstruction", "bank", "matching", "carbon"];
+    const ids = [...stats.survey ? ["survey"] : [], "materials", "passports", "assessment", "deconstruction", "bank", "matching", "carbon"];
     return /* @__PURE__ */ React.createElement("div", { className: "module-cards" }, ids.map((id) => {
       const m = moduleById(id);
       const s = stats[id];

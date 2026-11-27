@@ -61,7 +61,7 @@ function OpenProjectDialog({ onClose, onOpen, onImportPackage, onDelete }) {
                   {list.map(p => (
                     <tr key={p.id} onClick={() => onOpen(p.id)} title="Open this project">
                       <td className="strong">{p.name}</td>
-                      <td>{p.models.map(m => <span key={m.sha256} className="mono">{m.fileName} <span className="muted">{formatBytes(m.fileSize)}</span></span>)}</td>
+                      <td>{p.models.map(m => <span key={m.sha256} className="mono">{m.fileName} <span className="muted">{formatBytes(m.fileSize)}</span></span>)}{p.survey && <span className="muted">{p.models.length ? ' + ' : ''}Building survey, {plural(p.survey.components, 'component')}</span>}</td>
                       <td>{formatWhen(p.updatedAt)}</td>
                       <td className="num">
                         <IconButton icon={Icons.Trash} label={`Delete ${p.name}`} size={14} className="sm" onClick={async (e) => { e.stopPropagation(); if (await onDelete(p)) refresh(); }} />
@@ -118,6 +118,7 @@ function HelpDialog({ onClose, onOpenModule }) {
   const groups = [
     ['Camera', [['Left drag', 'Orbit'], ['Right drag, Shift + drag', 'Pan'], ['Wheel', 'Zoom toward the cursor'], ['Double-click', 'Zoom to element'], ['1 to 6', 'Iso, top, front, back, left, right'], ['F', 'Zoom to selection']]],
     ['Selection', [['Click', 'Select'], ['Ctrl + click', 'Add to selection'], ['H / I / A', 'Hide, isolate, show all'], ['Esc', 'Stop the tool, then clear selection'], ['Right-click', 'Context menu']]],
+    ['Building Survey', [['Esc', 'Stop placing'], ['Delete', 'Delete the selected component'], ['Arrow keys', 'Move by 10 cm (Shift: 1 m)'], ['R', 'Turn 90°'], ['D', 'Duplicate']]],
     ['Tools', [['S', 'Section box'], ['M', 'Measure'], ['P', 'Pin an issue'], ['E', 'Edge lines'], ['X / W', 'X-ray, wireframe'], ['Ctrl + K', 'Search'], ['O', 'Import IFC'], ['Ctrl + S', 'Save project']]],
   ];
   return (
@@ -130,7 +131,7 @@ function HelpDialog({ onClose, onOpenModule }) {
       {tab === 'start' && (
         <div className="help-text">
           <ol>
-            <li><strong>Import an IFC model</strong> (or open a sample). It is parsed in your browser with web-ifc; nothing is uploaded.</li>
+            <li><strong>Import an IFC model</strong> (or open a sample). It is parsed in your browser with web-ifc; nothing is uploaded. For an existing building without a model, <strong>start a building survey</strong> instead: record its floors, documents and components in <strong>Building Survey</strong>.</li>
             <li><strong>Overview</strong> shows what the model contains and which elements carry the material, property and classification data the circular modules need.</li>
             <li><strong>IFC Viewer</strong> is the 3D and floor-plan workspace: the model tree, inspector, search, section box, measuring, issues, saved views and selection sets. <em>Colour mode</em> recolours the model by category or by the data of any module.</li>
             <li><strong>Materials, Passports and Assessment</strong> build the material inventory, the component passports and the reuse screening. <strong>Deconstruction</strong> sequences the removal. <strong>Material Bank</strong> and <strong>Reuse Matching</strong> allocate recovered components to a new building; <strong>Carbon &amp; Cost</strong> compares that with building new; <strong>Reports</strong> combines everything.</li>
@@ -156,7 +157,8 @@ function HelpDialog({ onClose, onOpenModule }) {
         <div className="help-text">
           <p>BIM2REUSE has no server. IFC files are read in this browser tab.</p>
           <p>Saved projects, including a copy of each IFC file, live in this browser's IndexedDB storage on this device. Clearing site data deletes them; export a project package to keep a copy. Settings and panel sizes live in local storage.</p>
-          <p>Elements are referenced by their IFC GlobalId, so views, selection sets and issues survive reopening a project and carry over to a revised model whose elements keep their GlobalIds.</p>
+          <p>Elements are referenced by their IFC GlobalId, so views, selection sets and issues survive reopening a project and carry over to a revised model whose elements keep their GlobalIds. Surveyed components have no GlobalId; they keep a persistent component ID (B2R-…) instead.</p>
+          <p>Survey documents, plan images and photographs are stored with the project in the same local storage and travel inside the project package.</p>
           <p>The page loads React, Three.js and fonts from public CDNs. Nothing you open or enter is sent anywhere.</p>
         </div>
       )}

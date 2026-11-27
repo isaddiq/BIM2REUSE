@@ -22,7 +22,7 @@ function stageModeData(model, analysis, theme) {
   const ramp = STAGE_RAMP[theme] || STAGE_RAMP.light;
   const n = analysis.stages;
   const colors = new Map();
-  const byGid = new Map(deconTasks(model).map(el => [el.globalId, el.expressId]));
+  const byGid = new Map(deconTasks(model).map(el => [componentIdOf(el), el.expressId]));
   const bins = n <= 8 ? n : 6;
   const binOf = (s) => (n <= 8 ? s : Math.min(bins, Math.ceil((s / n) * bins)));
   const groups = new Map();
@@ -66,13 +66,13 @@ function DeconSidebar({ model, plan, setPlan, analysis, warnings, playStage, set
   };
   const resolve = (rule, status) => setPlan(p => ({ ...p, deps: p.deps.map(d => (d.rule === rule && d.status === 'suggested' ? { ...d, status, resolvedAt: new Date().toISOString() } : d)) }));
   const tasks = deconTasks(model);
-  const missing = tasks.filter(el => !((plan.tasks[el.globalId] || {}).duration >= 0)).length;
+  const missing = tasks.filter(el => !((plan.tasks[componentIdOf(el)] || {}).duration >= 0)).length;
   const applyDuration = () => {
     const v = Number(String(fillDur).replace(',', '.'));
     if (!(v >= 0)) { toast({ kind: 'error', msg: 'Enter a duration of 0 or more' }); return; }
     setPlan(p => {
       const t = { ...p.tasks };
-      tasks.forEach(el => { const cur = t[el.globalId] || {}; if (!(cur.duration >= 0)) t[el.globalId] = { ...cur, duration: v }; });
+      tasks.forEach(el => { const cur = t[componentIdOf(el)] || {}; if (!(cur.duration >= 0)) t[componentIdOf(el)] = { ...cur, duration: v }; });
       return { ...p, tasks: t };
     });
     toast({ kind: 'ok', msg: `Duration set for ${plural(missing, 'task')}`, sub: `${v} ${plan.durationUnit} each; tasks with a duration kept theirs` });
@@ -157,21 +157,21 @@ function DeconPanel({ model, plan, analysis, activeGid, onPickGid, collapsed, on
   const unresolved = useMemo(() => { const m = new Map(); plan.deps.forEach(d => { if (d.status === 'suggested') [d.from, d.to].forEach(g => m.set(g, (m.get(g) || 0) + 1)); }); return m; }, [plan.deps]);
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return deconTasks(model).filter(el => (!linkedOnly || linked.has(el.globalId)) && (!t || `${el.name || ''} ${el.ifcClass} ${el.globalId}`.toLowerCase().includes(t)));
+    return deconTasks(model).filter(el => (!linkedOnly || linked.has(componentIdOf(el))) && (!t || `${el.name || ''} ${el.ifcClass} ${componentIdOf(el)}`.toLowerCase().includes(t)));
   }, [model, q, linkedOnly, linked]);
   const c = analysis.cpm;
   const cols = [
-    { key: 'stage', label: 'Stage', width: 64, align: 'end', render: el => (analysis.inCycle.has(el.globalId) || analysis.blocked.includes(el.globalId) ? <span className="qty-missing">Cycle</span> : <span className="mono">{analysis.stage.get(el.globalId) || '—'}</span>), sort: el => analysis.stage.get(el.globalId) || 1e9 },
-    { key: 'name', label: 'Element', width: 'minmax(160px, 1.5fr)', render: el => <span title={el.globalId}>{el.name || el.globalId}</span>, sort: el => el.name },
+    { key: 'stage', label: 'Stage', width: 64, align: 'end', render: el => (analysis.inCycle.has(componentIdOf(el)) || analysis.blocked.includes(componentIdOf(el)) ? <span className="qty-missing">Cycle</span> : <span className="mono">{analysis.stage.get(componentIdOf(el)) || '—'}</span>), sort: el => analysis.stage.get(componentIdOf(el)) || 1e9 },
+    { key: 'name', label: 'Element', width: 'minmax(160px, 1.5fr)', render: el => <span title={componentIdOf(el)}>{el.name || componentIdOf(el)}</span>, sort: el => el.name },
     { key: 'cls', label: 'IFC class', width: 140, render: el => <span className="mono">{el.ifcClass.replace(/^Ifc/, '')}</span>, sort: el => el.ifcClass },
     { key: 'storey', label: 'Storey', width: 'minmax(90px, 0.8fr)', render: el => (el.storey ? el.storey.name : <span className="muted">—</span>), sort: el => (el.storey ? el.storey.name : '') },
-    { key: 'pred', label: 'Before it', width: 72, align: 'end', render: el => <span className="mono">{(analysis.pred.get(el.globalId) || []).length}</span>, sort: el => (analysis.pred.get(el.globalId) || []).length, title: 'Confirmed predecessors' },
-    { key: 'succ', label: 'After it', width: 66, align: 'end', render: el => <span className="mono">{(analysis.succ.get(el.globalId) || []).length}</span>, sort: el => (analysis.succ.get(el.globalId) || []).length, title: 'Confirmed successors' },
-    { key: 'open', label: 'To review', width: 76, align: 'end', render: el => (unresolved.get(el.globalId) ? <span className="warn-text mono">{unresolved.get(el.globalId)}</span> : <span className="muted">—</span>), sort: el => unresolved.get(el.globalId) || 0, title: 'Suggested dependencies not yet confirmed or rejected' },
-    { key: 'dur', label: `Duration ${plan.durationUnit}`, width: 86, align: 'end', render: el => { const d = (plan.tasks[el.globalId] || {}).duration; return d >= 0 ? <span className="mono">{fmtNum(d, 2)}</span> : <span className="muted">—</span>; }, sort: el => (plan.tasks[el.globalId] || {}).duration },
-    { key: 'es', label: 'Start', width: 64, align: 'end', render: el => (c ? <span className="mono">{fmtNum(c.es.get(el.globalId), 1)}</span> : <span className="muted">—</span>), sort: el => (c ? c.es.get(el.globalId) : null) },
-    { key: 'slack', label: 'Slack', width: 64, align: 'end', render: el => (c ? (c.critical.has(el.globalId) ? <span className="crit-chip">Critical</span> : <span className="mono">{fmtNum(c.slack.get(el.globalId), 1)}</span>) : <span className="muted">—</span>), sort: el => (c ? c.slack.get(el.globalId) : null) },
-    { key: 'review', label: 'Review', width: 150, render: el => { const r = (plan.tasks[el.globalId] || {}).review || 'unreviewed'; return <span className="review-chip" data-review={r} data-structural={STRUCTURAL_RE.test(el.ifcClass) || undefined}>{REVIEW_LABEL[r]}</span>; }, sort: el => (plan.tasks[el.globalId] || {}).review || '' },
+    { key: 'pred', label: 'Before it', width: 72, align: 'end', render: el => <span className="mono">{(analysis.pred.get(componentIdOf(el)) || []).length}</span>, sort: el => (analysis.pred.get(componentIdOf(el)) || []).length, title: 'Confirmed predecessors' },
+    { key: 'succ', label: 'After it', width: 66, align: 'end', render: el => <span className="mono">{(analysis.succ.get(componentIdOf(el)) || []).length}</span>, sort: el => (analysis.succ.get(componentIdOf(el)) || []).length, title: 'Confirmed successors' },
+    { key: 'open', label: 'To review', width: 76, align: 'end', render: el => (unresolved.get(componentIdOf(el)) ? <span className="warn-text mono">{unresolved.get(componentIdOf(el))}</span> : <span className="muted">—</span>), sort: el => unresolved.get(componentIdOf(el)) || 0, title: 'Suggested dependencies not yet confirmed or rejected' },
+    { key: 'dur', label: `Duration ${plan.durationUnit}`, width: 86, align: 'end', render: el => { const d = (plan.tasks[componentIdOf(el)] || {}).duration; return d >= 0 ? <span className="mono">{fmtNum(d, 2)}</span> : <span className="muted">—</span>; }, sort: el => (plan.tasks[componentIdOf(el)] || {}).duration },
+    { key: 'es', label: 'Start', width: 64, align: 'end', render: el => (c ? <span className="mono">{fmtNum(c.es.get(componentIdOf(el)), 1)}</span> : <span className="muted">—</span>), sort: el => (c ? c.es.get(componentIdOf(el)) : null) },
+    { key: 'slack', label: 'Slack', width: 64, align: 'end', render: el => (c ? (c.critical.has(componentIdOf(el)) ? <span className="crit-chip">Critical</span> : <span className="mono">{fmtNum(c.slack.get(componentIdOf(el)), 1)}</span>) : <span className="muted">—</span>), sort: el => (c ? c.slack.get(componentIdOf(el)) : null) },
+    { key: 'review', label: 'Review', width: 150, render: el => { const r = (plan.tasks[componentIdOf(el)] || {}).review || 'unreviewed'; return <span className="review-chip" data-review={r} data-structural={STRUCTURAL_RE.test(el.ifcClass) || undefined}>{REVIEW_LABEL[r]}</span>; }, sort: el => (plan.tasks[componentIdOf(el)] || {}).review || '' },
   ];
   const sorted = useMemo(() => sortRows(rows, cols, sort), [rows, sort, analysis, plan]);
   const unit = plan.durationUnit;
@@ -202,7 +202,7 @@ function DeconPanel({ model, plan, analysis, activeGid, onPickGid, collapsed, on
       {!collapsed && (
         <div className="bp-body dt-host">
           {tab === 'activities' ? (
-            <DataTable columns={cols} rows={sorted} rowKey={el => el.globalId} activeKey={activeGid} sortState={sort} onSort={onSort} onRowClick={el => onPickGid(el.globalId)} empty="No tasks match." />
+            <DataTable columns={cols} rows={sorted} rowKey={el => componentIdOf(el)} activeKey={activeGid} sortState={sort} onSort={onSort} onRowClick={el => onPickGid(componentIdOf(el))} empty="No tasks match." />
           ) : <DeconTimeline model={model} analysis={analysis} plan={plan} unit={unit} activeGid={activeGid} onPickGid={onPickGid} />}
         </div>
       )}
@@ -212,7 +212,7 @@ function DeconPanel({ model, plan, analysis, activeGid, onPickGid, collapsed, on
 
 /** Gantt by earliest start when durations are complete; otherwise the tasks grouped by stage. */
 function DeconTimeline({ model, analysis, plan, unit, activeGid, onPickGid }) {
-  const byGid = useMemo(() => new Map(deconTasks(model).map(el => [el.globalId, el])), [model]);
+  const byGid = useMemo(() => new Map(deconTasks(model).map(el => [componentIdOf(el), el])), [model]);
   const c = analysis.cpm;
   if (analysis.stages === 0) return <p className="pane-note pad">Confirm dependencies to see the sequence.</p>;
   if (c) {
@@ -263,7 +263,7 @@ function DepRow({ dep, other, byGid, onPickGid, setStatus, remove }) {
 }
 
 function DeconDetail({ model, gid, plan, setPlan, analysis, pickMode, setPickMode, onPickGid }) {
-  const byGid = useMemo(() => new Map(deconTasks(model).map(el => [el.globalId, el])), [model]);
+  const byGid = useMemo(() => new Map(deconTasks(model).map(el => [componentIdOf(el), el])), [model]);
   const el = gid ? byGid.get(gid) : null;
   if (!el) {
     return (
@@ -288,7 +288,7 @@ function DeconDetail({ model, gid, plan, setPlan, analysis, pickMode, setPickMod
     <aside className="side right-side" aria-label="Removal task">
       <header className="insp-header">
         <div className="insp-class"><span className="mono">{el.ifcClass}</span>{STRUCTURAL_RE.test(el.ifcClass) && <span className="warn-text"> · structural</span>}</div>
-        <h2 className="insp-name">{el.name || el.globalId}</h2>
+        <h2 className="insp-name">{el.name || componentIdOf(el)}</h2>
         <div className="pp-meta muted"><span>{el.storey ? el.storey.name : 'No storey'}</span><span className="mono">{gid}</span></div>
         <div className="stage-banner" data-cycle={cyc || undefined}>
           {cyc ? <><Icons.Alert size={14} /> In or after a dependency cycle: it cannot be sequenced.</> : <><span className="strong">Stage {stage}</span><span className="muted">{allBefore} task{allBefore === 1 ? '' : 's'} before it, {allAfter} after it{c ? ` · start ${fmtNum(c.es.get(gid), 1)} ${plan.durationUnit}${c.critical.has(gid) ? ' · critical' : ` · slack ${fmtNum(c.slack.get(gid), 1)}`}` : ''}</span></>}

@@ -7,6 +7,13 @@ const MODULES = [
   { id: 'overview', label: 'Overview', icon: 'Dashboard', status: 'live' },
   { id: 'viewer', label: 'IFC Viewer', icon: 'Cube', status: 'live' },
   {
+    id: 'survey', label: 'Building Survey', title: 'Building Survey', icon: 'Building', status: 'live', phase: 8,
+    summary: 'Workflow 2 for existing buildings without a BIM model: building information, floors, documents and surveyed components with a simplified 3D reconstruction.',
+    methods: ['Components recorded by hand, traced on a scaled floor-plan image, or imported from CSV or JSON inventories', 'Each value carries its provenance: manual, taken from drawings, imported, estimated or inspection verified', 'Persistent internal component IDs; IFC GlobalIds only for IFC elements, with links when a model is added later'],
+    outputs: ['Simplified 3D model from the recorded dimensions', 'Missing and unverified information flagged per component', 'Survey CSV and JSON export'],
+    caveat: 'The 3D model is a manual reconstruction (one box per component), not a measured survey; nothing is reconstructed automatically from scans or photographs.',
+  },
+  {
     id: 'materials', label: 'Materials', title: 'Material Inventory', icon: 'Material', status: 'live', phase: 2,
     summary: 'Turns the IFC model into a material inventory: every building element with its materials, quantities and mass, traceable to its GlobalId.',
     methods: [
@@ -107,7 +114,7 @@ function ModuleNav({ active, onChange, collapsed, onToggleCollapsed }) {
 // Overview: start page without a model, project dashboard with one
 // ---------------------------------------------------------------------------
 const WORKFLOW = [
-  { id: 'viewer', step: 'Explore', text: 'Open an IFC model and inspect its elements' },
+  { id: 'viewer', step: 'Explore', text: 'Open an IFC model, or survey a building without one' },
   { id: 'materials', step: 'Inventory', text: 'Extract materials and quantities' },
   { id: 'passports', step: 'Document', text: 'Create component passports' },
   { id: 'assessment', step: 'Assess', text: 'Screen reuse pathways' },
@@ -152,7 +159,7 @@ function formatWhen(iso) {
   return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function StartPage({ samples, onImport, onLoadSample, onLoadFile, recent, onOpenProject, onDeleteProject, onOpenModule, storeError }) {
+function StartPage({ samples, onImport, onLoadSample, onLoadFile, recent, onOpenProject, onDeleteProject, onOpenModule, storeError, onNewSurvey, onOpenDemo, demo }) {
   const [over, setOver] = useState(false);
   return (
     <div className="page start-page" onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={e => { if (e.currentTarget === e.target) setOver(false); }} onDrop={e => {
@@ -164,31 +171,52 @@ function StartPage({ samples, onImport, onLoadSample, onLoadFile, recent, onOpen
       <div className="page-inner">
         <section className="hero">
           <div className="hero-text">
-            <p className="eyebrow"><Icons.Cycle size={14} /> Circular construction, from the IFC model</p>
+            <p className="eyebrow"><Icons.Cycle size={14} /> Circular construction, with or without a BIM model</p>
             <h1>From BIM to Circular Construction</h1>
-            <p className="lead">BIM2REUSE reads a building model in your browser and turns it into a material inventory, component passports, a reuse assessment, a deconstruction plan and an optimised match with a new building, each traceable to the IFC element it came from. Files never leave your device.</p>
-            <div className="hero-actions">
-              <button type="button" className="btn btn-primary btn-lg" onClick={onImport}><Icons.Upload size={16} /> Import IFC</button>
-              <button type="button" className="btn btn-lg" onClick={() => onLoadSample(samples[0])}><Icons.Cube size={16} /> Try a sample model</button>
+            <p className="lead">BIM2REUSE turns a building into a material inventory, component passports, a reuse assessment, a deconstruction plan and an optimised match with a new building, each traceable to the component it came from. Start from an IFC model, or survey an existing building that has none. Files never leave your device.</p>
+            <div className="workflow-choice">
+              <section className="wf-card" aria-labelledby="wf1-h">
+                <span className="wf-card-num">Workflow 1</span>
+                <h2 id="wf1-h"><Icons.Cube size={17} /> Import IFC model</h2>
+                <p>Read an IFC2x3, IFC4 or IFC4.3 model with its materials, quantities and properties.</p>
+                <div className="hero-actions">
+                  <button type="button" className="btn btn-primary" onClick={onImport}><Icons.Upload size={15} /> Import IFC</button>
+                  <button type="button" className="btn" onClick={() => onLoadSample(samples[0])}>Try a sample model</button>
+                </div>
+                <button type="button" className="dropzone" data-over={over} onClick={onImport}>
+                  <Icons.Upload size={18} />
+                  <span>Drop a <code>.ifc</code> file anywhere on this page</span>
+                  <span className="muted">Parsed locally with web-ifc</span>
+                </button>
+              </section>
+              <section className="wf-card" aria-labelledby="wf2-h">
+                <span className="wf-card-num">Workflow 2</span>
+                <h2 id="wf2-h"><Icons.Building size={17} /> Existing building without BIM</h2>
+                <p>Record the building and the components you find on site, from drawings and photographs. Trace floor plans to build a simplified 3D model, or import an inventory.</p>
+                <div className="hero-actions">
+                  <button type="button" className="btn btn-primary" onClick={onNewSurvey}><Icons.FilePlus size={15} /> Start a building survey</button>
+                  <button type="button" className="btn" onClick={onOpenDemo}>Open the demo survey</button>
+                </div>
+                <ul className="wf-card-list">
+                  <li>Floors, plans, CAD drawings, PDFs and photographs</li>
+                  <li>Components with dimensions, materials, condition, connections and reuse potential</li>
+                  <li>Every value marked manual, from drawings, imported, estimated or verified</li>
+                </ul>
+              </section>
             </div>
-            <button type="button" className="dropzone" data-over={over} onClick={onImport}>
-              <Icons.Upload size={18} />
-              <span>Drop a <code>.ifc</code> file anywhere on this page</span>
-              <span className="muted">IFC2x3, IFC4 and IFC4.3, parsed locally with web-ifc</span>
-            </button>
           </div>
           <section className="card recent" aria-label="Local projects">
             <h2><Icons.FolderOpen size={16} /> Local projects</h2>
             {storeError ? <p className="muted">{storeError}</p>
               : !recent ? <p className="muted">Reading the local project store…</p>
-                : recent.length === 0 ? <p className="muted">No saved projects yet. Import a model; with autosave on, the project is saved in this browser as you work.</p>
+                : recent.length === 0 ? <p className="muted">No saved projects yet. Import a model or start a survey; with autosave on, the project is saved in this browser as you work.</p>
                   : (
                     <ul className="recent-list">
                       {recent.slice(0, 6).map(p => (
                         <li key={p.id}>
                           <button type="button" className="recent-open" onClick={() => onOpenProject(p.id)}>
                             <span className="recent-name">{p.name}</span>
-                            <span className="recent-meta">{p.models.map(m => m.fileName).join(', ') || 'No model'} · {formatWhen(p.updatedAt)}</span>
+                            <span className="recent-meta">{projectSourceText(p)} · {formatWhen(p.updatedAt)}</span>
                           </button>
                           <IconButton icon={Icons.Trash} label={`Delete ${p.name}`} size={14} className="sm" onClick={() => onDeleteProject(p)} />
                         </li>
@@ -204,7 +232,7 @@ function StartPage({ samples, onImport, onLoadSample, onLoadFile, recent, onOpen
         </section>
 
         <section aria-label="Sample models">
-          <h2 className="section-h">Sample models</h2>
+          <h2 className="section-h">Samples</h2>
           <div className="sample-grid">
             {samples.map(smp => (
               <article key={smp.id} className="card sample-card">
@@ -221,11 +249,33 @@ function StartPage({ samples, onImport, onLoadSample, onLoadFile, recent, onOpen
                 </div>
               </article>
             ))}
+            {demo && (
+              <article className="card sample-card">
+                <div className="sample-head">
+                  <Icons.Building size={18} />
+                  <h3>{demo.name}</h3>
+                  <span className="mono muted">Workflow 2</span>
+                </div>
+                <p>{demo.facts}</p>
+                <p className="sample-credit">Fictional building and documents made for BIM2REUSE, MIT licence.</p>
+                <div className="sample-actions">
+                  <button type="button" className="btn btn-sm" onClick={onOpenDemo}>Open</button>
+                  <a className="btn btn-sm btn-ghost" href={demo.url} download={demo.file}><Icons.Download size={14} /> Download package</a>
+                </div>
+              </article>
+            )}
           </div>
         </section>
       </div>
     </div>
   );
+}
+
+/** What a stored project is built on, for project lists: its IFC file, its survey, or both. */
+function projectSourceText(p) {
+  const files = (p.models || []).map(m => m.fileName).join(', ');
+  const sv = p.survey ? `Building survey, ${plural(p.survey.components, 'component')}` : '';
+  return [files, sv].filter(Boolean).join(' + ') || 'No model';
 }
 
 /** Horizontal bars for one measure (a count), sorted by the caller. One hue; the label carries identity. */
@@ -359,6 +409,98 @@ function ProjectDashboard({ project, model, summary, spatial, saveInfo, onOpenMo
   );
 }
 
+/** Overview of a survey-only project (Workflow 2). */
+function SurveyDashboard({ project, model, summary, saveInfo, onOpenModule, onShowIds, stats }) {
+  const sv = project.survey;
+  const b = sv.building;
+  const st = surveyStats(sv);
+  const els = model.elements.filter(e => e.survey);
+  const idsWhere = (pred) => els.filter(e => pred(sv.components.find(c => c.id === e.componentId) || {})).map(e => e.expressId);
+  const total = els.length;
+  const have = (pred) => total - idsWhere(c => !pred(c)).length;
+  const without = (pred) => idsWhere(c => !pred(c));
+  const measured = (c) => ['length', 'width', 'height'].every(k => c[k] != null && (c.prov || {})[k] !== 'estimated');
+  const typeRows = st.types.map(([t, n]) => ({ id: t, label: (SURVEY_TYPE[t] || {}).label || t, value: n, ids: model.byClass.get(t) || [] }));
+  const floorRows = [...sortedFloors(sv)].reverse().map(f => ({ id: f.id, label: f.name, value: sv.components.filter(c => c.floorId === f.id).length, ids: idsWhere(c => c.floorId === f.id) }));
+  const where = [b.address, b.city, b.country].filter(Boolean).join(', ');
+  return (
+    <div className="page">
+      <div className="page-inner">
+        <header className="page-head dash-head">
+          <span className="page-icon"><Icons.Building size={22} /></span>
+          <div className="dash-title">
+            <h1>{project.name}</h1>
+            <p className="page-sub">Existing building without BIM{where ? ` · ${where}` : ''}{b.constructionYear ? ` · built ${b.constructionYear}` : ''}{b.use ? ` · ${b.use}` : ''}</p>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => onOpenModule('survey')}><Icons.Building size={15} /> Open Building Survey</button>
+        </header>
+
+        <div className="kpis">
+          <div className="kpi"><span className="kpi-v mono">{st.components.toLocaleString()}</span><span className="kpi-k">Surveyed components</span></div>
+          <div className="kpi"><span className="kpi-v mono">{st.floors}</span><span className="kpi-k">Floors</span></div>
+          <div className="kpi"><span className="kpi-v mono">{st.documents}</span><span className="kpi-k">Documents</span></div>
+          <div className="kpi"><span className="kpi-v mono">{st.withMissing.toLocaleString()}</span><span className="kpi-k">With missing information</span></div>
+          <div className="kpi"><span className="kpi-v mono">{st.recordedValues ? `${Math.round((st.verifiedValues / st.recordedValues) * 100)}%` : '—'}</span><span className="kpi-k">Values verified</span></div>
+        </div>
+
+        {stats && (
+          <section aria-label="Circular workflow status">
+            <h2 className="section-h">Circular workflow</h2>
+            <ModuleCards stats={stats} onOpenModule={onOpenModule} />
+          </section>
+        )}
+
+        {total === 0 ? (
+          <section className="card"><EmptyState icon={Icons.Building} title="No components yet" action={<button type="button" className="btn btn-primary" onClick={() => onOpenModule('survey')}>Open Building Survey</button>}>Place components on the floors in the 3D view, trace a floor plan, or import an inventory.</EmptyState></section>
+        ) : (
+          <div className="dash-grid">
+            <section className="card">
+              <HeadTip as="h2" className="" title="Components by type" tip="Surveyed components by the type recorded for them. Click a bar to show them in the 3D viewer." />
+              <CountBars rows={typeRows} total={total} unit="components" onPick={r => onShowIds(r.ids)} />
+            </section>
+            <section className="card">
+              <HeadTip as="h2" className="" title="Components by floor" tip="Surveyed components on each floor, top floor first. Click a bar to show them in the 3D viewer." />
+              <CountBars rows={floorRows} total={total} unit="components" onPick={r => onShowIds(r.ids)} />
+            </section>
+            <section className="card span-2">
+              <HeadTip as="h2" className="" title="Survey information readiness" tip="Which surveyed components carry the information the circular modules build on. It counts whether a value was recorded, not whether it is correct." />
+              <ul className="ready-list">
+                <ReadinessRow label="Material recorded" have={have(c => !!c.material)} total={total} missingIds={without(c => !!c.material)} onShowMissing={onShowIds} />
+                <ReadinessRow label="Dimensions measured" note="length, width and height, none estimated" have={have(measured)} total={total} missingIds={without(measured)} onShowMissing={onShowIds} />
+                <ReadinessRow label="Condition rating" have={have(c => c.conditionRating != null)} total={total} missingIds={without(c => c.conditionRating != null)} onShowMissing={onShowIds} />
+                <ReadinessRow label="Connection type" have={have(c => !!c.connectionType)} total={total} missingIds={without(c => !!c.connectionType)} onShowMissing={onShowIds} />
+                <ReadinessRow label="Reuse potential" have={have(c => !!c.reusePotential)} total={total} missingIds={without(c => !!c.reusePotential)} onShowMissing={onShowIds} />
+                <ReadinessRow label="Inspected on site" have={have(c => c.inspected === 'done')} total={total} missingIds={without(c => c.inspected === 'done')} onShowMissing={onShowIds} />
+              </ul>
+            </section>
+            <section className="card">
+              <h2>Project</h2>
+              <dl className="facts">
+                <div><dt>Last saved</dt><dd>{saveInfo}</dd></div>
+                <div><dt>Created</dt><dd>{formatWhen(project.createdAt)}</dd></div>
+                <div><dt>Source</dt><dd>Building survey (no IFC model)</dd></div>
+                <div><dt>Surveyed by</dt><dd>{b.surveyor || '—'}{b.surveyDate ? `, ${b.surveyDate}` : ''}</dd></div>
+                <div><dt>Project format</dt><dd className="mono">{project.format} v{project.version}</dd></div>
+                <div><dt>Tracing plans</dt><dd>{st.plans} of {st.floors} floors</dd></div>
+              </dl>
+            </section>
+            <section className="card">
+              <h2>Provenance of recorded values</h2>
+              <table className="dtbl compact">
+                <thead><tr><th>Source</th><th className="num">Values</th></tr></thead>
+                <tbody>
+                  {PROVENANCE.filter(p => st.byProvenance[p.id]).map(p => <tr key={p.id}><td><SourceBadge source={p.id} /></td><td className="num mono">{st.byProvenance[p.id].toLocaleString()}</td></tr>)}
+                  {!Object.keys(st.byProvenance).length && <tr><td colSpan={2} className="muted">No values recorded yet.</td></tr>}
+                </tbody>
+              </table>
+            </section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
@@ -425,7 +567,7 @@ function SettingsPage({ prefs, setPrefs, themePref, setThemePref, onClearProject
             <div>
               <div className="setting-k">Saved projects</div>
               <div className="setting-sub">
-                {!usage ? 'Reading…' : usage.error ? usage.error : `${plural(usage.projects, 'project')}, ${plural(usage.files, 'IFC file')} (${formatBytes(usage.fileBytes)})`}
+                {!usage ? 'Reading…' : usage.error ? usage.error : `${plural(usage.projects, 'project')}, ${plural(usage.files, 'stored file')} (${formatBytes(usage.fileBytes)})`}
                 {estimate && estimate.quota ? ` · browser storage used ${formatBytes(estimate.usage)} of ${formatBytes(estimate.quota)}` : ''}
               </div>
             </div>
@@ -443,4 +585,4 @@ function SettingsPage({ prefs, setPrefs, themePref, setThemePref, onClearProject
   );
 }
 
-Object.assign(window, { MODULES, SETTINGS_MODULE, moduleById, ModuleNav, StartPage, ProjectDashboard, SettingsPage, WorkflowStrip, formatBytes, formatWhen });
+Object.assign(window, { MODULES, SETTINGS_MODULE, moduleById, ModuleNav, StartPage, ProjectDashboard, SurveyDashboard, SettingsPage, WorkflowStrip, formatBytes, formatWhen, projectSourceText });

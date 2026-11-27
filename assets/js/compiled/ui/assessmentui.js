@@ -9,7 +9,7 @@
         r.elementType = p.fields.elementType.value;
         results.push(r);
       });
-      const byGid = new Map(results.map((r) => [r.globalId, r]));
+      const byGid = new Map(results.map((r) => [r.componentId, r]));
       return { results, byGid };
     }, [passports, config]);
   }
@@ -68,7 +68,7 @@
         if (filter.outcome && r.outcome !== filter.outcome) return false;
         if (filter.hideUnassessed && r.outcome === "unassessed") return false;
         if (!q) return true;
-        return `${r.globalId} ${r.elementName} ${r.elementType} ${OUTCOME_LABEL[r.outcome]}`.toLowerCase().includes(q);
+        return `${r.componentId} ${r.elementName} ${r.elementType} ${OUTCOME_LABEL[r.outcome]}`.toLowerCase().includes(q);
       });
     }, [assessment, filter]);
     const crit = (id) => (r) => r.criteria[id].score == null ? /* @__PURE__ */ React.createElement("span", { className: "qty-missing" }, "Missing") : /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.criteria[id].score.toFixed(2));
@@ -103,13 +103,13 @@
       {
         columns: cols,
         rows: sorted,
-        rowKey: (r) => r.globalId,
+        rowKey: (r) => r.componentId,
         activeKey: activeGid,
         sortState: sort,
         onSort,
         rowClass: (r) => sel.has(r.expressId) ? "is-sel" : "",
         onRowClick: (r) => {
-          setActiveGid(r.globalId);
+          setActiveGid(r.componentId);
           dispatch({ type: "select", ids: [r.expressId] });
           onZoomTo([r.expressId]);
         },

@@ -10,14 +10,15 @@ const COMPLETENESS_COLORS = {
 const completenessBucket = (pct) => (pct >= 75 ? 3 : pct >= 50 ? 2 : pct >= 25 ? 1 : 0);
 const BUCKET_LABEL = ['Under 25%', '25–49%', '50–74%', '75–100%'];
 
-/** All passports (automatic drafts merged with stored records), keyed by GlobalId. */
+/** All passports (automatic drafts merged with stored records), keyed by component ID (the GlobalId of an IFC element). */
 function usePassports(model, inventory, records, projectName) {
   return useMemo(() => {
     if (!model || !inventory) return null;
     const map = new Map();
     model.elements.filter(isPhysicalElement).forEach(el => {
-      if (!el.globalId) return;
-      map.set(el.globalId, resolvePassport(model, el, records[el.globalId], inventory.rows, projectName));
+      const cid = componentIdOf(el);
+      if (!cid) return;
+      map.set(cid, resolvePassport(model, el, records[cid], inventory.rows, projectName));
     });
     return map;
   }, [model, inventory, records, projectName]);
@@ -43,7 +44,7 @@ function PassportList({ passports, selectedGid, onSelect, filter, setFilter }) {
     if (filter.status && p.status !== filter.status) return false;
     if (filter.storedOnly && !p.stored) return false;
     if (!q) return true;
-    return `${p.globalId} ${p.fields.elementName.value || ''} ${p.fields.elementType.value} ${p.fields.materialName.value || ''}`.toLowerCase().includes(q);
+    return `${p.componentId} ${p.globalId || ""} ${p.fields.elementName.value || ''} ${p.fields.elementType.value} ${p.fields.materialName.value || ''}`.toLowerCase().includes(q);
   });
   const cols = [
     { key: 'name', label: 'Component', width: 'minmax(120px, 1fr)', render: p => <span title={p.fields.elementName.value || ''}>{p.fields.elementName.value || <span className="muted">{p.fields.elementType.value}</span>}</span>, sort: p => p.fields.elementName.value },
@@ -58,7 +59,7 @@ function PassportList({ passports, selectedGid, onSelect, filter, setFilter }) {
         <h3 className="mod-h">Component passports</h3>
         <div className="field-search" style={{ margin: 0 }}>
           <Icons.Search size={14} />
-          <input aria-label="Search passports" placeholder="Search name, type, material, GlobalId" value={filter.text || ''} onChange={e => setFilter(f => ({ ...f, text: e.target.value }))} />
+          <input aria-label="Search passports" placeholder="Search name, type, material, ID" value={filter.text || ''} onChange={e => setFilter(f => ({ ...f, text: e.target.value }))} />
         </div>
         <div className="pp-filters">
           <select className="text-input" aria-label="Status filter" value={filter.status || ''} onChange={e => setFilter(f => ({ ...f, status: e.target.value || null }))}>
@@ -70,7 +71,7 @@ function PassportList({ passports, selectedGid, onSelect, filter, setFilter }) {
         <p className="mod-note head-tip"><span>{plural(all.length, 'component')}; {plural(all.filter(p => p.stored).length, 'passport')} edited</span><InfoTip title="Automatic drafts">Unedited passports are automatic drafts filled from the IFC model and the inventory, including any survey data the model carries. Values you enter are stored as manual and override them.</InfoTip></p>
       </div>
       <div className="dt-host" style={{ flex: 1 }}>
-        <DataTable columns={cols} rows={sorted} rowKey={p => p.globalId} activeKey={selectedGid} sortState={sort} onSort={onSort} onRowClick={p => onSelect(p)} empty="No passports match." />
+        <DataTable columns={cols} rows={sorted} rowKey={p => p.componentId} activeKey={selectedGid} sortState={sort} onSort={onSort} onRowClick={p => onSelect(p)} empty="No passports match." />
       </div>
     </aside>
   );
@@ -144,7 +145,7 @@ function PassportEditor({ passport, record, setRecord, model, onZoomTo, dispatch
     setTimeout(() => w.print(), 300);
   };
   const jsonOne = () => {
-    download(JSON.stringify({ format: 'bim2reuse-passport', version: 1, source: model.fileName, passport }, null, 2), `passport-${passport.globalId}.json`, 'application/json');
+    download(JSON.stringify({ format: 'bim2reuse-passport', version: 1, source: model.fileName, passport }, null, 2), `passport-${passport.componentId}.json`, 'application/json');
   };
   const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (

@@ -827,8 +827,9 @@ function Inspector({ model, viewerState, dispatch, onZoomTo, toast, onSelect, ex
         <div className="insp-class"><span className="swatch" style={{ background: CLASS_COLOR(el.ifcClass) }} /><span className="mono">{el.ifcClass}</span>{selCount > 1 && <span className="insp-multi">+{selCount - 1} more selected</span>}</div>
         <h2 className="insp-name">{elementLabel(el)}</h2>
         <div className="insp-guid">
-          <span className="mono">{el.globalId || 'No GlobalId'}</span>
+          <span className="mono" title={el.survey ? 'Surveyed component: internal component ID, no IFC GlobalId' : undefined}>{el.globalId || (el.componentId ? `${el.componentId} · surveyed` : 'No GlobalId')}</span>
           {el.globalId && <IconButton icon={Icons.Copy} label="Copy GlobalId" size={13} className="sm" onClick={() => copy(el.globalId, 'GlobalId')} />}
+          {!el.globalId && el.componentId && <IconButton icon={Icons.Copy} label="Copy component ID" size={13} className="sm" onClick={() => copy(el.componentId, 'Component ID')} />}
         </div>
         <div className="insp-actions">
           <button type="button" className="btn btn-sm" onClick={() => onZoomTo([id])} disabled={!el.geometry}><Icons.Focus size={14} /> Zoom</button>
@@ -1181,12 +1182,13 @@ function runModelChecks(model) {
   const products = inst.filter(e => !SPATIAL_CLASSES.includes(e.ifcClass) && !/^IfcOpening/.test(e.ifcClass));
   const out = [];
   const byGuid = new Map();
+  // Surveyed components and the survey's floors have no GlobalId by design; they are not checked here.
   model.elements.forEach(e => { if (e.globalId) byGuid.set(e.globalId, (byGuid.get(e.globalId) || []).concat(e.expressId)); });
   const dup = [...byGuid.values()].filter(v => v.length > 1).flat();
   out.push(dup.length
     ? { severity: 'error', message: 'Duplicate GlobalIds', detail: 'GlobalId must be unique across the file.', ids: dup }
     : { severity: 'pass', message: 'All GlobalIds are unique', ids: [] });
-  const noGuid = model.elements.filter(e => !e.globalId).map(e => e.expressId);
+  const noGuid = model.elements.filter(e => !e.globalId && !e.survey && !e.surveySpatial).map(e => e.expressId);
   if (noGuid.length) out.push({ severity: 'error', message: 'Missing GlobalId', ids: noGuid });
   const noName = products.filter(e => !(e.name || '').trim()).map(e => e.expressId);
   out.push(noName.length ? { severity: 'warn', message: 'Elements without a Name', ids: noName } : { severity: 'pass', message: 'Every element has a Name', ids: [] });

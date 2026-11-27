@@ -75,6 +75,9 @@
     derived: "Calculated",
     dataset: "Imported from dataset",
     manual: "Manually entered",
+    drawing: "Taken from drawings",
+    imported: "Imported from file",
+    estimated: "Estimated",
     verified: "Inspection verified",
     assumed: "Assumed",
     missing: "Missing"
@@ -83,6 +86,7 @@
     return { value, unit, source, method, verification: source === "verified" ? "verified" : "unverified", ...extra };
   }
   const missing = (unit, method) => qv(null, unit, "missing", method);
+  const missingQ = missing;
   const QTO = {
     volume: [/^NetVolume$/i, /^GrossVolume$/i, /^Volume$/i],
     area: [/^NetSideArea$/i, /^NetArea$/i, /^NetSurfaceArea$/i, /^GrossSideArea$/i, /^GrossArea$/i, /^GrossSurfaceArea$/i, /^Area$/i, /^OuterSurfaceArea$/i, /^CrossSectionArea$/i],
@@ -110,6 +114,7 @@
     };
   }
   function elementQuantities(el) {
+    if (el.surveyQ) return el.surveyQ;
     const limits = boxLimits(el);
     const issues = [];
     const pick = (kind, wanted, unit) => {
@@ -191,6 +196,7 @@
   function densityFor(item, category, settings, matProps) {
     const manual = settings.densities && settings.densities[item.name];
     if (manual && manual.value > 0) return qv(manual.value, "kg/m\xB3", "manual", "Entered for this material", { reference: manual.reference || null });
+    if (item.surveyDensity && item.surveyDensity.value > 0) return item.surveyDensity;
     const fromIfc = item.id != null && matProps.get(item.id);
     if (fromIfc) return qv(fromIfc.density, "kg/m\xB3", "ifc", `${fromIfc.setName} MassDensity${fromIfc.unitDeclared ? "" : " (unit not declared in the file; kg/m\xB3 assumed)"}`);
     const ds = settings.datasets && settings.datasets[category];
@@ -215,8 +221,9 @@
       parts.forEach((part, i) => {
         const name = part.noMaterial ? "" : part.name || "(unnamed material)";
         const manualCat = name && settings.classification ? settings.classification[name] : null;
-        const autoCat = part.noMaterial ? null : classifyMaterial(part.name, part.category);
-        const category = manualCat || autoCat || "unclassified";
+        const surveyCat = part.noMaterial ? null : CATEGORY_IDS.includes(part.surveyCategory) ? part.surveyCategory : null;
+        const autoCat = part.noMaterial || surveyCat ? null : classifyMaterial(part.name, part.category);
+        const category = manualCat || surveyCat || autoCat || "unclassified";
         const density = part.noMaterial ? missing("kg/m\xB3", "No material assigned") : densityFor(part, category, settings, matProps);
         let mass;
         if (parts.length === 1 && q.mass) mass = q.mass;
@@ -226,7 +233,7 @@
           mass = missing("kg", part.volume.value == null ? "Volume missing" : "Density missing");
         }
         rows.push({
-          key: `${el.globalId || "#" + el.expressId}:${i}`,
+          key: `${componentIdOf(el) || "#" + el.expressId}:${i}`,
           expressId: el.expressId,
           globalId: el.globalId,
           ifcClass: el.ifcClass,
@@ -242,7 +249,9 @@
           fraction: part.fraction != null ? part.fraction : null,
           profileName: part.profileName || null,
           category,
-          categorySource: manualCat ? "manual" : autoCat ? "keyword" : "none",
+          categorySource: manualCat ? "manual" : surveyCat ? "survey" : autoCat ? "keyword" : "none",
+          componentId: componentIdOf(el),
+          survey: !!el.survey,
           volume: part.volume,
           area: part.area,
           length: parts.length === 1 && q.length.value != null ? q.length : null,
@@ -320,6 +329,7 @@
     const num = (x) => x && x.value != null ? Number(x.value.toPrecision(10)) : "";
     const head = [
       "GlobalId",
+      "ComponentId",
       "ExpressId",
       "IfcClass",
       "ElementName",
@@ -347,6 +357,7 @@
     const lines = [head.join(",")];
     inv.rows.forEach((r) => lines.push([
       r.globalId,
+      r.componentId,
       r.expressId,
       r.ifcClass,
       r.name,
@@ -383,6 +394,8 @@
     CATEGORY_LABEL,
     REFERENCE_DENSITIES,
     SOURCE_LABEL,
+    qv,
+    missingQ,
     classifyMaterial,
     meshVolume,
     elementQuantities,

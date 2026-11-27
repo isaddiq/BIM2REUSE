@@ -26,12 +26,12 @@ function matchingModeData(matching, items, model, theme) {
   const assigned = new Set(run ? run.result.metrics.assignedItemIds : []);
   const eligible = new Set(run ? run.result.metrics.eligibleItemIds : []);
   const byGid = new Map();
-  items.forEach(it => { if (it.globalId) byGid.set(it.globalId, it); });
+  items.forEach(it => { const r = bankItemRef(it); if (r) byGid.set(r, it); });
   const colors = new Map();
   const groups = new Map();
   model.elements.forEach(el => {
     if (!el.geometry || !isPhysicalElement(el)) return;
-    const it = el.globalId ? byGid.get(el.globalId) : null;
+    const it = componentIdOf(el) ? byGid.get(componentIdOf(el)) : null;
     const k = !it ? 'none' : !run ? 'banked' : assigned.has(it.id) ? 'assigned' : eligible.has(it.id) ? 'eligible' : 'ineligible';
     colors.set(el.expressId, pal[k]);
     if (!groups.has(k)) groups.set(k, []);
@@ -385,7 +385,7 @@ function MatchingPanel({ items, setItems, matching, stale, active, setActive, re
     { key: 'piece', label: 'Piece', width: 56, align: 'end', render: a => <span className="mono">{a.piece}</span>, sort: a => a.piece },
     { key: 'item', label: 'From bank record', width: 'minmax(150px, 1.3fr)', render: a => <span title={a.itemId}>{a.itemName}{a.plan && a.plan.item.quantity > 1 ? <span className="muted"> #{a.unit}</span> : null}</span>, sort: a => a.itemName },
     { key: 'src', label: 'Source building', width: 'minmax(110px, 1fr)', render: a => a.sourceBuilding || <span className="muted">—</span>, sort: a => a.sourceBuilding },
-    { key: 'gid', label: 'GlobalId', width: 190, render: a => (a.globalId ? <span className="mono">{a.globalId}</span> : <span className="muted">—</span>), sort: a => a.globalId },
+    { key: 'gid', label: 'Component ID', width: 190, render: a => ((a.componentId || a.globalId) ? <span className="mono" title={a.globalId ? 'IFC GlobalId' : 'Survey component ID'}>{a.componentId || a.globalId}</span> : <span className="muted">—</span>), sort: a => a.componentId || a.globalId },
     { key: 'how', label: 'Reuse', width: 110, render: a => (a.plan && a.plan.cut ? `Cut ${fmtNum(a.req.length, 3)} m` : 'Whole'), sort: a => (a.plan && a.plan.cut ? 1 : 0) },
   ];
   const rows = tab === 'requirements' ? requirements : allocRows;
@@ -439,7 +439,7 @@ function MatchingPanel({ items, setItems, matching, stale, active, setActive, re
                   <ul className="plan-list">
                     {res.plans.map(p => (
                       <li key={planKey(p)} data-active={active && active.kind === 'plan' && active.key === planKey(p) || undefined}>
-                        <button type="button" onClick={() => { setActive({ kind: 'plan', key: planKey(p) }); selectItem(p.item.globalId); }}>
+                        <button type="button" onClick={() => { setActive({ kind: 'plan', key: planKey(p) }); selectItem(bankItemRef(p.item)); }}>
                           <span className="plan-head">
                             <span className="plan-name">{p.item.name}{p.item.quantity > 1 ? <span className="muted"> #{p.unit}</span> : null}</span>
                             <span className="muted">{p.item.sourceBuilding || ''}</span>
@@ -455,7 +455,7 @@ function MatchingPanel({ items, setItems, matching, stale, active, setActive, re
           ) : (
             <DataTable columns={cols} rows={sorted} rowKey={r => (tab === 'requirements' ? r.id : r.key)} sortState={sort} onSort={onSort}
               activeKey={tab === 'requirements' && active && active.kind === 'req' ? active.id : null}
-              onRowClick={r => { if (tab === 'requirements') setActive({ kind: 'req', id: r.id }); else { setActive({ kind: 'req', id: r.req.id }); selectItem(r.globalId); } }}
+              onRowClick={r => { if (tab === 'requirements') setActive({ kind: 'req', id: r.id }); else { setActive({ kind: 'req', id: r.req.id }); selectItem(r.componentId || r.globalId); } }}
               empty={tab === 'requirements' ? 'No requirements yet. Add them on the left, import a CSV, or read a destination IFC model.' : res ? 'Nothing was allocated.' : 'Run the optimisation to see allocations.'} />
           )}
         </div>
@@ -485,8 +485,8 @@ function MatchingDetail({ items, matching, setMatching, active, setActive, regis
         <header className="insp-header">
           <div className="insp-class"><span className="mono">{COMPONENT_LABEL[plan.item.component] || plan.item.component}</span></div>
           <h2 className="insp-name">{plan.item.name}{plan.item.quantity > 1 ? ` #${plan.unit}` : ''}</h2>
-          <div className="pp-meta muted"><span>{plan.item.sourceBuilding || 'Unknown source building'}</span>{plan.item.globalId && <span className="mono">{plan.item.globalId}</span>}</div>
-          {plan.item.globalId && registry && registry.expressIdOfGlobalId(plan.item.globalId) != null && <div className="insp-actions"><button type="button" className="btn btn-sm" onClick={() => select(plan.item.globalId)}><Icons.Focus size={14} /> Show in 3D</button></div>}
+          <div className="pp-meta muted"><span>{plan.item.sourceBuilding || 'Unknown source building'}</span>{bankItemRef(plan.item) && <span className="mono">{bankItemRef(plan.item)}</span>}</div>
+          {bankItemRef(plan.item) && registry && registry.expressIdOfGlobalId(bankItemRef(plan.item)) != null && <div className="insp-actions"><button type="button" className="btn btn-sm" onClick={() => select(bankItemRef(plan.item))}><Icons.Focus size={14} /> Show in 3D</button></div>}
         </header>
         <div className="side-scroll pad-card">
           <CutBar plan={plan} large />
@@ -554,7 +554,7 @@ function MatchingDetail({ items, matching, setMatching, active, setActive, regis
           <ul className="cand-list">
             {candidates.slice(0, 120).map(({ it, c }) => (
               <li key={it.id} data-outcome={c.outcome}>
-                <button type="button" onClick={() => select(it.globalId)} title={it.globalId ? 'Show in 3D' : it.id}>
+                <button type="button" onClick={() => select(bankItemRef(it))} title={bankItemRef(it) ? 'Show in 3D' : it.id}>
                   <span className="cand-head"><span className="cand-name">{it.name}</span><span className="match-chip" data-outcome={c.outcome}>{MATCH_OUTCOME_LABEL[c.outcome]}</span></span>
                   <span className="cand-meta muted">{[it.sourceBuilding, it.material, it.length != null ? `${fmtNum(it.length, 3)} m` : null, it.quantity > 1 ? `× ${it.quantity}` : null].filter(Boolean).join(' · ')}{c.eligible ? '' : ' · not eligible under the current parameters'}</span>
                   {c.checks.filter(x => x.result !== 'pass').map(x => <span key={x.id} className="cand-check" data-result={x.result}>{x.label}: {x.detail}</span>)}

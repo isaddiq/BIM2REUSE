@@ -49,10 +49,11 @@
     const verification = pv(passport, "verificationStatus") || "not-started";
     const rating = num(pv(passport, "conditionRating"));
     return {
-      id: `bank-${passport.globalId}`,
+      id: `bank-${passport.componentId}`,
       sourceBuilding: buildingName,
-      origin: "model",
-      globalId: passport.globalId,
+      origin: passport.survey ? "survey" : "model",
+      componentId: passport.componentId,
+      globalId: passport.globalId || null,
       ifcClass: el.ifcClass,
       component: componentCategory(el.ifcClass),
       name: pv(passport, "elementName") || el.ifcClass,
@@ -146,6 +147,7 @@
     id: ["id", "bank_id", "item_id"],
     sourceBuilding: ["source_building", "building", "source"],
     globalId: ["global_id", "globalid", "ifc_globalid", "guid"],
+    componentId: ["component_id", "survey_component_id"],
     component: ["component", "component_category", "type", "element_type"],
     name: ["name", "description", "element_name"],
     material: ["material", "material_name"],
@@ -201,6 +203,7 @@
         sourceBuilding: get("sourceBuilding") || sourceName,
         origin,
         globalId: get("globalId"),
+        componentId: get("componentId") || get("globalId"),
         ifcClass: null,
         component,
         name: get("name") || COMPONENT_LABEL[component],
@@ -246,10 +249,10 @@
     const records = list.map((o, i) => ({ line: i + 1, data: Object.fromEntries(Object.entries(o).map(([k, v]) => [k.toLowerCase().replace(/([a-z])([A-Z])/g, "$1_$2").replace(/[\s-]+/g, "_").toLowerCase(), v == null ? "" : String(v)])) }));
     return normaliseBankRecords(records, "json", fileName);
   }
-  const BANK_CSV_HEAD = ["id", "source_building", "global_id", "component", "name", "material", "material_category", "length_m", "width_m", "height_m", "cross_section", "quantity", "mass_kg", "condition", "grade", "availability", "verification", "location", "distance_km", "cost", "currency", "passport", "notes"];
+  const BANK_CSV_HEAD = ["id", "source_building", "global_id", "component_id", "component", "name", "material", "material_category", "length_m", "width_m", "height_m", "cross_section", "quantity", "mass_kg", "condition", "grade", "availability", "verification", "location", "distance_km", "cost", "currency", "passport", "notes"];
   function bankCsv(items) {
     const lines = [BANK_CSV_HEAD.join(",")];
-    items.forEach((it) => lines.push([it.id, it.sourceBuilding, it.globalId, it.component, it.name, it.material, it.materialCategory, it.length, it.width, it.height, it.crossSection, it.quantity, it.mass, it.condition, it.grade, it.availability, it.verification, it.location, it.distanceKm, it.cost, it.currency, it.passportRef, it.notes].map(csvCellPlain).join(",")));
+    items.forEach((it) => lines.push([it.id, it.sourceBuilding, it.globalId, it.componentId || it.globalId, it.component, it.name, it.material, it.materialCategory, it.length, it.width, it.height, it.crossSection, it.quantity, it.mass, it.condition, it.grade, it.availability, it.verification, it.location, it.distanceKm, it.cost, it.currency, it.passportRef, it.notes].map(csvCellPlain).join(",")));
     return lines.join("\n");
   }
   function mergeBankItems(existing, incoming) {
@@ -281,7 +284,10 @@
       };
     });
   }
-  const BANK_ORIGIN_LABEL = { model: "IFC model", csv: "CSV import", json: "JSON import", project: "Saved project" };
+  const BANK_ORIGIN_LABEL = { model: "IFC model", survey: "Building survey", csv: "CSV import", json: "JSON import", project: "Saved project" };
+  function bankItemRef(it) {
+    return it && (it.componentId || it.globalId) || null;
+  }
   Object.assign(window, {
     BANK_STATES,
     BANK_STATE_LABEL,
@@ -292,6 +298,7 @@
     BANK_ORIGIN_LABEL,
     componentCategory,
     bankItemFromPassport,
+    bankItemRef,
     parseCsv,
     csvObjects,
     normaliseBankRecords,

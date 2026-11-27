@@ -14,7 +14,7 @@
     const ramp = STAGE_RAMP[theme] || STAGE_RAMP.light;
     const n = analysis.stages;
     const colors = /* @__PURE__ */ new Map();
-    const byGid = new Map(deconTasks(model).map((el) => [el.globalId, el.expressId]));
+    const byGid = new Map(deconTasks(model).map((el) => [componentIdOf(el), el.expressId]));
     const bins = n <= 8 ? n : 6;
     const binOf = (s) => n <= 8 ? s : Math.min(bins, Math.ceil(s / n * bins));
     const groups = /* @__PURE__ */ new Map();
@@ -75,7 +75,7 @@
     };
     const resolve = (rule, status) => setPlan((p) => ({ ...p, deps: p.deps.map((d) => d.rule === rule && d.status === "suggested" ? { ...d, status, resolvedAt: (/* @__PURE__ */ new Date()).toISOString() } : d) }));
     const tasks = deconTasks(model);
-    const missing = tasks.filter((el) => !((plan.tasks[el.globalId] || {}).duration >= 0)).length;
+    const missing = tasks.filter((el) => !((plan.tasks[componentIdOf(el)] || {}).duration >= 0)).length;
     const applyDuration = () => {
       const v = Number(String(fillDur).replace(",", "."));
       if (!(v >= 0)) {
@@ -85,8 +85,8 @@
       setPlan((p) => {
         const t = { ...p.tasks };
         tasks.forEach((el) => {
-          const cur = t[el.globalId] || {};
-          if (!(cur.duration >= 0)) t[el.globalId] = { ...cur, duration: v };
+          const cur = t[componentIdOf(el)] || {};
+          if (!(cur.duration >= 0)) t[componentIdOf(el)] = { ...cur, duration: v };
         });
         return { ...p, tasks: t };
       });
@@ -118,27 +118,27 @@
     }, [plan.deps]);
     const rows = useMemo(() => {
       const t = q.trim().toLowerCase();
-      return deconTasks(model).filter((el) => (!linkedOnly || linked.has(el.globalId)) && (!t || `${el.name || ""} ${el.ifcClass} ${el.globalId}`.toLowerCase().includes(t)));
+      return deconTasks(model).filter((el) => (!linkedOnly || linked.has(componentIdOf(el))) && (!t || `${el.name || ""} ${el.ifcClass} ${componentIdOf(el)}`.toLowerCase().includes(t)));
     }, [model, q, linkedOnly, linked]);
     const c = analysis.cpm;
     const cols = [
-      { key: "stage", label: "Stage", width: 64, align: "end", render: (el) => analysis.inCycle.has(el.globalId) || analysis.blocked.includes(el.globalId) ? /* @__PURE__ */ React.createElement("span", { className: "qty-missing" }, "Cycle") : /* @__PURE__ */ React.createElement("span", { className: "mono" }, analysis.stage.get(el.globalId) || "\u2014"), sort: (el) => analysis.stage.get(el.globalId) || 1e9 },
-      { key: "name", label: "Element", width: "minmax(160px, 1.5fr)", render: (el) => /* @__PURE__ */ React.createElement("span", { title: el.globalId }, el.name || el.globalId), sort: (el) => el.name },
+      { key: "stage", label: "Stage", width: 64, align: "end", render: (el) => analysis.inCycle.has(componentIdOf(el)) || analysis.blocked.includes(componentIdOf(el)) ? /* @__PURE__ */ React.createElement("span", { className: "qty-missing" }, "Cycle") : /* @__PURE__ */ React.createElement("span", { className: "mono" }, analysis.stage.get(componentIdOf(el)) || "\u2014"), sort: (el) => analysis.stage.get(componentIdOf(el)) || 1e9 },
+      { key: "name", label: "Element", width: "minmax(160px, 1.5fr)", render: (el) => /* @__PURE__ */ React.createElement("span", { title: componentIdOf(el) }, el.name || componentIdOf(el)), sort: (el) => el.name },
       { key: "cls", label: "IFC class", width: 140, render: (el) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, el.ifcClass.replace(/^Ifc/, "")), sort: (el) => el.ifcClass },
       { key: "storey", label: "Storey", width: "minmax(90px, 0.8fr)", render: (el) => el.storey ? el.storey.name : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => el.storey ? el.storey.name : "" },
-      { key: "pred", label: "Before it", width: 72, align: "end", render: (el) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, (analysis.pred.get(el.globalId) || []).length), sort: (el) => (analysis.pred.get(el.globalId) || []).length, title: "Confirmed predecessors" },
-      { key: "succ", label: "After it", width: 66, align: "end", render: (el) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, (analysis.succ.get(el.globalId) || []).length), sort: (el) => (analysis.succ.get(el.globalId) || []).length, title: "Confirmed successors" },
-      { key: "open", label: "To review", width: 76, align: "end", render: (el) => unresolved.get(el.globalId) ? /* @__PURE__ */ React.createElement("span", { className: "warn-text mono" }, unresolved.get(el.globalId)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => unresolved.get(el.globalId) || 0, title: "Suggested dependencies not yet confirmed or rejected" },
+      { key: "pred", label: "Before it", width: 72, align: "end", render: (el) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, (analysis.pred.get(componentIdOf(el)) || []).length), sort: (el) => (analysis.pred.get(componentIdOf(el)) || []).length, title: "Confirmed predecessors" },
+      { key: "succ", label: "After it", width: 66, align: "end", render: (el) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, (analysis.succ.get(componentIdOf(el)) || []).length), sort: (el) => (analysis.succ.get(componentIdOf(el)) || []).length, title: "Confirmed successors" },
+      { key: "open", label: "To review", width: 76, align: "end", render: (el) => unresolved.get(componentIdOf(el)) ? /* @__PURE__ */ React.createElement("span", { className: "warn-text mono" }, unresolved.get(componentIdOf(el))) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => unresolved.get(componentIdOf(el)) || 0, title: "Suggested dependencies not yet confirmed or rejected" },
       { key: "dur", label: `Duration ${plan.durationUnit}`, width: 86, align: "end", render: (el) => {
-        const d = (plan.tasks[el.globalId] || {}).duration;
+        const d = (plan.tasks[componentIdOf(el)] || {}).duration;
         return d >= 0 ? /* @__PURE__ */ React.createElement("span", { className: "mono" }, fmtNum(d, 2)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014");
-      }, sort: (el) => (plan.tasks[el.globalId] || {}).duration },
-      { key: "es", label: "Start", width: 64, align: "end", render: (el) => c ? /* @__PURE__ */ React.createElement("span", { className: "mono" }, fmtNum(c.es.get(el.globalId), 1)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => c ? c.es.get(el.globalId) : null },
-      { key: "slack", label: "Slack", width: 64, align: "end", render: (el) => c ? c.critical.has(el.globalId) ? /* @__PURE__ */ React.createElement("span", { className: "crit-chip" }, "Critical") : /* @__PURE__ */ React.createElement("span", { className: "mono" }, fmtNum(c.slack.get(el.globalId), 1)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => c ? c.slack.get(el.globalId) : null },
+      }, sort: (el) => (plan.tasks[componentIdOf(el)] || {}).duration },
+      { key: "es", label: "Start", width: 64, align: "end", render: (el) => c ? /* @__PURE__ */ React.createElement("span", { className: "mono" }, fmtNum(c.es.get(componentIdOf(el)), 1)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => c ? c.es.get(componentIdOf(el)) : null },
+      { key: "slack", label: "Slack", width: 64, align: "end", render: (el) => c ? c.critical.has(componentIdOf(el)) ? /* @__PURE__ */ React.createElement("span", { className: "crit-chip" }, "Critical") : /* @__PURE__ */ React.createElement("span", { className: "mono" }, fmtNum(c.slack.get(componentIdOf(el)), 1)) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "\u2014"), sort: (el) => c ? c.slack.get(componentIdOf(el)) : null },
       { key: "review", label: "Review", width: 150, render: (el) => {
-        const r = (plan.tasks[el.globalId] || {}).review || "unreviewed";
+        const r = (plan.tasks[componentIdOf(el)] || {}).review || "unreviewed";
         return /* @__PURE__ */ React.createElement("span", { className: "review-chip", "data-review": r, "data-structural": STRUCTURAL_RE.test(el.ifcClass) || void 0 }, REVIEW_LABEL[r]);
-      }, sort: (el) => (plan.tasks[el.globalId] || {}).review || "" }
+      }, sort: (el) => (plan.tasks[componentIdOf(el)] || {}).review || "" }
     ];
     const sorted = useMemo(() => sortRows(rows, cols, sort), [rows, sort, analysis, plan]);
     const unit = plan.durationUnit;
@@ -149,10 +149,10 @@
       } },
       { label: "Plan (JSON)", sub: "Tasks, dependencies with their status and rule", icon: Icons.Code, run: () => download(deconPlanJson(model, plan, analysis, projectName), "bim2reuse-deconstruction-plan.json", "application/json") },
       { label: "Dependency graph (DOT)", sub: "For Graphviz; suggested edges dashed", icon: Icons.Graph, run: () => download(deconDot(model, plan, analysis), "bim2reuse-deconstruction.dot", "text/vnd.graphviz") }
-    ] }), /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.ChevronDown, label: collapsed ? "Expand panel" : "Collapse panel", size: 15, onClick: onToggleCollapsed, style: { transform: collapsed ? "rotate(180deg)" : "" } }))), !collapsed && /* @__PURE__ */ React.createElement("div", { className: "bp-body dt-host" }, tab === "activities" ? /* @__PURE__ */ React.createElement(DataTable, { columns: cols, rows: sorted, rowKey: (el) => el.globalId, activeKey: activeGid, sortState: sort, onSort, onRowClick: (el) => onPickGid(el.globalId), empty: "No tasks match." }) : /* @__PURE__ */ React.createElement(DeconTimeline, { model, analysis, plan, unit, activeGid, onPickGid })));
+    ] }), /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.ChevronDown, label: collapsed ? "Expand panel" : "Collapse panel", size: 15, onClick: onToggleCollapsed, style: { transform: collapsed ? "rotate(180deg)" : "" } }))), !collapsed && /* @__PURE__ */ React.createElement("div", { className: "bp-body dt-host" }, tab === "activities" ? /* @__PURE__ */ React.createElement(DataTable, { columns: cols, rows: sorted, rowKey: (el) => componentIdOf(el), activeKey: activeGid, sortState: sort, onSort, onRowClick: (el) => onPickGid(componentIdOf(el)), empty: "No tasks match." }) : /* @__PURE__ */ React.createElement(DeconTimeline, { model, analysis, plan, unit, activeGid, onPickGid })));
   }
   function DeconTimeline({ model, analysis, plan, unit, activeGid, onPickGid }) {
-    const byGid = useMemo(() => new Map(deconTasks(model).map((el) => [el.globalId, el])), [model]);
+    const byGid = useMemo(() => new Map(deconTasks(model).map((el) => [componentIdOf(el), el])), [model]);
     const c = analysis.cpm;
     if (analysis.stages === 0) return /* @__PURE__ */ React.createElement("p", { className: "pane-note pad" }, "Confirm dependencies to see the sequence.");
     if (c) {
@@ -174,7 +174,7 @@
     return /* @__PURE__ */ React.createElement("li", { className: "dep-row", "data-status": dep.status }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "link-btn dep-el", onClick: () => onPickGid(other), title: other }, el ? `${friendlyClass(el.ifcClass)} ${el.name || ""}` : other), /* @__PURE__ */ React.createElement("span", { className: "dep-meta muted", title: dep.reason || "" }, DEP_RULE_LABEL[dep.rule], " \xB7 ", dep.status), /* @__PURE__ */ React.createElement("span", { className: "dep-actions" }, dep.status !== "confirmed" && /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.Check, label: "Confirm", size: 13, className: "sm", onClick: () => setStatus("confirmed") }), dep.status !== "rejected" && dep.rule !== "manual" && /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.Ban, label: "Reject", size: 13, className: "sm", onClick: () => setStatus("rejected") }), dep.rule === "manual" && /* @__PURE__ */ React.createElement(IconButton, { icon: Icons.Trash, label: "Remove", size: 13, className: "sm", onClick: remove })));
   }
   function DeconDetail({ model, gid, plan, setPlan, analysis, pickMode, setPickMode, onPickGid }) {
-    const byGid = useMemo(() => new Map(deconTasks(model).map((el2) => [el2.globalId, el2])), [model]);
+    const byGid = useMemo(() => new Map(deconTasks(model).map((el2) => [componentIdOf(el2), el2])), [model]);
     const el = gid ? byGid.get(gid) : null;
     if (!el) {
       return /* @__PURE__ */ React.createElement("aside", { className: "side right-side", "aria-label": "Removal task" }, /* @__PURE__ */ React.createElement(EmptyState, { icon: Icons.Deconstruct, title: "Select an element" }, "Each physical element is one removal task. Its dependencies say what must come out before it and what it must come out before."), /* @__PURE__ */ React.createElement("div", { className: "hint-card" }, /* @__PURE__ */ React.createElement("div", null, "Suggest dependencies on the left, then review them here."), /* @__PURE__ */ React.createElement("div", null, "Stage 1 is removed first.")));
@@ -190,7 +190,7 @@
     const cyc = analysis.inCycle.has(gid) || analysis.blocked.includes(gid);
     const c = analysis.cpm;
     const picking = pickMode && pickMode.gid === gid ? pickMode.role : null;
-    return /* @__PURE__ */ React.createElement("aside", { className: "side right-side", "aria-label": "Removal task" }, /* @__PURE__ */ React.createElement("header", { className: "insp-header" }, /* @__PURE__ */ React.createElement("div", { className: "insp-class" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, el.ifcClass), STRUCTURAL_RE.test(el.ifcClass) && /* @__PURE__ */ React.createElement("span", { className: "warn-text" }, " \xB7 structural")), /* @__PURE__ */ React.createElement("h2", { className: "insp-name" }, el.name || el.globalId), /* @__PURE__ */ React.createElement("div", { className: "pp-meta muted" }, /* @__PURE__ */ React.createElement("span", null, el.storey ? el.storey.name : "No storey"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, gid)), /* @__PURE__ */ React.createElement("div", { className: "stage-banner", "data-cycle": cyc || void 0 }, cyc ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Icons.Alert, { size: 14 }), " In or after a dependency cycle: it cannot be sequenced.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "strong" }, "Stage ", stage), /* @__PURE__ */ React.createElement("span", { className: "muted" }, allBefore, " task", allBefore === 1 ? "" : "s", " before it, ", allAfter, " after it", c ? ` \xB7 start ${fmtNum(c.es.get(gid), 1)} ${plan.durationUnit}${c.critical.has(gid) ? " \xB7 critical" : ` \xB7 slack ${fmtNum(c.slack.get(gid), 1)}`}` : "")))), /* @__PURE__ */ React.createElement("div", { className: "side-scroll" }, /* @__PURE__ */ React.createElement(Section, { title: "Task", open: true, onToggle: () => {
+    return /* @__PURE__ */ React.createElement("aside", { className: "side right-side", "aria-label": "Removal task" }, /* @__PURE__ */ React.createElement("header", { className: "insp-header" }, /* @__PURE__ */ React.createElement("div", { className: "insp-class" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, el.ifcClass), STRUCTURAL_RE.test(el.ifcClass) && /* @__PURE__ */ React.createElement("span", { className: "warn-text" }, " \xB7 structural")), /* @__PURE__ */ React.createElement("h2", { className: "insp-name" }, el.name || componentIdOf(el)), /* @__PURE__ */ React.createElement("div", { className: "pp-meta muted" }, /* @__PURE__ */ React.createElement("span", null, el.storey ? el.storey.name : "No storey"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, gid)), /* @__PURE__ */ React.createElement("div", { className: "stage-banner", "data-cycle": cyc || void 0 }, cyc ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Icons.Alert, { size: 14 }), " In or after a dependency cycle: it cannot be sequenced.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "strong" }, "Stage ", stage), /* @__PURE__ */ React.createElement("span", { className: "muted" }, allBefore, " task", allBefore === 1 ? "" : "s", " before it, ", allAfter, " after it", c ? ` \xB7 start ${fmtNum(c.es.get(gid), 1)} ${plan.durationUnit}${c.critical.has(gid) ? " \xB7 critical" : ` \xB7 slack ${fmtNum(c.slack.get(gid), 1)}`}` : "")))), /* @__PURE__ */ React.createElement("div", { className: "side-scroll" }, /* @__PURE__ */ React.createElement(Section, { title: "Task", open: true, onToggle: () => {
     } }, /* @__PURE__ */ React.createElement(BankField, { label: "Duration", unit: plan.durationUnit, kind: "number", min: 0, value: t.duration, onCommit: (v) => setTask({ duration: v }) }), /* @__PURE__ */ React.createElement(BankField, { label: "Review", kind: "select", value: t.review || "unreviewed", options: REVIEW_STATES, onCommit: (v) => setTask({ review: v || "unreviewed", reviewedAt: (/* @__PURE__ */ new Date()).toISOString() }) }), /* @__PURE__ */ React.createElement(BankField, { label: "Method", value: t.method, onCommit: (v) => setTask({ method: v }) }), /* @__PURE__ */ React.createElement(BankField, { label: "Notes", value: t.notes, onCommit: (v) => setTask({ notes: v }) })), /* @__PURE__ */ React.createElement(Section, { title: "Remove before this", count: preds.length, open: true, onToggle: () => {
     } }, preds.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "pane-note" }, "Nothing has to come out first."), /* @__PURE__ */ React.createElement("ul", { className: "dep-list" }, preds.map((d) => /* @__PURE__ */ React.createElement(DepRow, { key: d.id, dep: d, other: d.from, byGid, onPickGid, setStatus: (s) => setStatus(d.id, s), remove: () => remove(d.id) }))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", "aria-pressed": picking === "pred", onClick: () => setPickMode(picking === "pred" ? null : { gid, role: "pred" }) }, /* @__PURE__ */ React.createElement(Icons.Plus, { size: 13 }), " ", picking === "pred" ? "Pick an element\u2026 (click to cancel)" : "Add: pick an element")), /* @__PURE__ */ React.createElement(Section, { title: "Remove after this", count: succs.length, open: true, onToggle: () => {
     } }, succs.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "pane-note" }, "Nothing waits for this task."), /* @__PURE__ */ React.createElement("ul", { className: "dep-list" }, succs.map((d) => /* @__PURE__ */ React.createElement(DepRow, { key: d.id, dep: d, other: d.to, byGid, onPickGid, setStatus: (s) => setStatus(d.id, s), remove: () => remove(d.id) }))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", "aria-pressed": picking === "succ", onClick: () => setPickMode(picking === "succ" ? null : { gid, role: "succ" }) }, /* @__PURE__ */ React.createElement(Icons.Plus, { size: 13 }), " ", picking === "succ" ? "Pick an element\u2026 (click to cancel)" : "Add: pick an element"), picking && /* @__PURE__ */ React.createElement("p", { className: "pane-note" }, "Click the element in 3D, on the plan or in the activity list. A dependency you add is confirmed."))));

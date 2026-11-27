@@ -144,6 +144,7 @@ function runQuery(model, q) {
     else if ((el.name || '').toLowerCase().includes(lower)) m = `Name ${el.name}`;
     else if ((el.longName || '').toLowerCase().includes(lower)) m = `Long name ${el.longName}`;
     else if ((el.globalId || '').toLowerCase().includes(lower)) m = `GlobalId ${el.globalId}`;
+    else if ((el.componentId || '').toLowerCase().includes(lower)) m = `Component ID ${el.componentId}`;
     else if ((el.objectType || '').toLowerCase().includes(lower)) m = `Object type ${el.objectType}`;
     else if ((el.tag || '').toLowerCase().includes(lower)) m = `Tag ${el.tag}`;
     else if (el.storey && (el.storey.name || '').toLowerCase().includes(lower)) m = `Storey ${el.storey.name}`;
@@ -242,7 +243,7 @@ function ViewerCanvas(props) {
     measureMode, toggleMeasure, annoMode, toggleAnno,
     levelId, onLevelChange, planCut, togglePlanCut, slabsTransparent, onToggleSlabs, onFocusGroup, onResetFilters,
     onPickEvent, onContextEvent, hint, layout, layoutSwitch, planElement,
-    colorMode, setColorMode, colorModes, modeColors, modeLegend, modeOpacity,
+    colorMode, setColorMode, colorModes, modeColors, modeLegend, modeOpacity, toolbar,
   } = props;
   const hostRef = useRef(null);
   const [ready, setReady] = useState(false);
@@ -283,6 +284,11 @@ function ViewerCanvas(props) {
     if (!v) return;
     if (!model) { v.clearModel(); setModelBounds(null); return; }
     let cancelled = false;
+    // The same source edited (a building survey being recorded): update in place, keep the camera.
+    if (v.model && model.sourceKey && v.model.sourceKey === model.sourceKey) {
+      v.updateModel(model).then(() => { if (!cancelled) setModelBounds(v.getModelBounds()); });
+      return () => { cancelled = true; };
+    }
     setModelBounds(null);
     v.loadModel(model).then(() => {
       if (cancelled) return;
@@ -346,6 +352,7 @@ function ViewerCanvas(props) {
               <ColorModeSwitch value={colorMode} onChange={setColorMode} modes={colorModes} />
             </div>
 
+            {toolbar && <div className="hud-tools">{toolbar}</div>}
             {modeLegend && <ModeLegend legend={modeLegend} viewerState={viewerState} dispatch={dispatch} onZoomTo={(ids) => v?.frameElements(ids)} />}
 
             <NavCubeHost viewerRef={viewerRef} ready={ready} theme={theme} />

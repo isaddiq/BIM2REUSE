@@ -98,7 +98,8 @@ test('the combined report has every section, no undefined values, and module sta
     carbon: { settings: W.EMPTY_CARBON_SETTINGS, result: null }, decon: { plan, analysis, warnings: W.planWarnings(model, plan, analysis) },
   };
   const html = W.combinedReportHtml(ctx, W.REPORT_SECTIONS.map(s => s.id));
-  for (const s of W.REPORT_SECTIONS) assert.ok(html.includes(`id="${s.id}"`), s.id);
+  // The building survey section appears only in projects that have a survey.
+  for (const s of W.REPORT_SECTIONS) assert.equal(html.includes(`id="${s.id}"`), s.id !== 'survey', s.id);
   assert.ok(!/undefined|NaN/.test(html), html.match(/.{60}(undefined|NaN).{20}/)?.[0]);
   assert.match(html, /The material bank is empty/);
   assert.match(html, /No destination requirements yet/);

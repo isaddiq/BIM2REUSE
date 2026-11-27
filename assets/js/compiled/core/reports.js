@@ -1,6 +1,7 @@
 (() => {
   const REPORT_SECTIONS = [
     { id: "project", label: "Project and source model" },
+    { id: "survey", label: "Building survey" },
     { id: "inventory", label: "Material inventory" },
     { id: "passports", label: "Material passports" },
     { id: "assessment", label: "Reuse assessment" },
@@ -39,6 +40,11 @@
     out.matching = run ? { state: ctx.matchStale ? "started" : "done", figures: [[`${run.result.metrics.fulfilledPieces} / ${run.result.metrics.demandPieces}`, "pieces fulfilled"], [run.result.metrics.utilisation == null ? "\u2014" : `${rf(run.result.metrics.utilisation * 100)}%`, "utilisation of cut stock"]], note: ctx.matchStale ? "Out of date: inputs changed" : run.result.statusText } : { state: ctx.matching && ctx.matching.requirements.length ? "started" : "empty", figures: [[String(ctx.matching ? ctx.matching.requirements.length : 0), "requirements"]], note: "Not run yet" };
     const cr = ctx.carbon && ctx.carbon.result;
     out.carbon = cr ? { state: cr.saving ? "done" : "started", figures: [[cr.saving ? `${rf(cr.saving.value / 1e3, 2)} t` : "\u2014", "CO\u2082e saved by reuse"], [cr.saving && cr.saving.share != null ? `${rf(cr.saving.share * 100)}%` : "\u2014", "of the conventional scenario"]], note: cr.missing.length ? `${cr.missing.length} kinds of input missing` : "All inputs present" } : { state: "empty", figures: [], note: run ? "Enter factors to compare scenarios" : "Needs a matching run" };
+    const sv = ctx.project && ctx.project.survey;
+    if (sv) {
+      const st = surveyStats(sv);
+      out.survey = { state: !st.components ? "empty" : st.withMissing ? "started" : "done", figures: [[st.components.toLocaleString(), "surveyed components"], [st.recordedValues ? `${Math.round(st.verifiedValues / st.recordedValues * 100)}%` : "\u2014", "of recorded values verified"]], note: st.components ? st.withMissing ? `${st.withMissing.toLocaleString()} with missing information` : "No missing information flagged" : "Add components, or import an inventory" };
+    }
     const d = ctx.decon;
     if (d && d.analysis) {
       const a = d.analysis;
@@ -55,11 +61,31 @@
       case "project": {
         const src = project.models[0] || {};
         const miss = [];
+        if (model.isSurvey) {
+          const b = project.survey && project.survey.building || {};
+          return h("Project and source data", table(["Item", "Value"], [
+            ["Project", project.name],
+            ["Workflow", "Existing building without BIM (building survey)"],
+            ["Created", project.createdAt],
+            ["Last changed", project.updatedAt],
+            ["Building", b.name],
+            ["Address", [b.address, b.city, b.country].filter(Boolean).join(", ") || null],
+            ["Construction year", b.constructionYear],
+            ["Use", b.use || null],
+            ["Structural system", b.structuralSystem || null],
+            ["Surveyed by", b.surveyor || null],
+            ["Survey date", b.surveyDate || null],
+            ["Floors", project.survey ? project.survey.floors.length : null],
+            ["Surveyed components", summary ? summary.physicalCount : null],
+            ["Generated with", `${APP_INFO.name} ${APP_INFO.version}, project format v${PROJECT_VERSION}`]
+          ]) + '<p class="note">There is no IFC model. Records refer to surveyed components by their internal component ID (B2R-\u2026); no IFC GlobalIds are assigned to them. Geometry is a simplified reconstruction from the recorded dimensions and positions.</p>');
+        }
         if (summary) {
           const t = summary.physicalCount;
           if (summary.withMaterial && summary.withMaterial.length < t) miss.push(`${t - summary.withMaterial.length} of ${t} physical elements have no material association.`);
           if (summary.withClassification && summary.withClassification.length < t) miss.push(`${t - summary.withClassification.length} of ${t} physical elements have no classification reference.`);
           if (summary.duplicateGlobalIds.length) miss.push(`${summary.duplicateGlobalIds.length} elements share a GlobalId; their records cannot be traced uniquely.`);
+          if (summary.surveyCount) miss.push(`${summary.surveyCount} components come from the building survey, not from the IFC model; they are identified by component ID.`);
         }
         return h("Project and source model", table(["Item", "Value"], [
           ["Project", project.name],
@@ -73,20 +99,34 @@
           ["Physical elements", summary ? summary.physicalCount : null],
           ["Storeys", model.storeys.length],
           ["Generated with", `${APP_INFO.name} ${APP_INFO.version}, project format v${PROJECT_VERSION}, web-ifc 0.0.35`]
-        ]) + '<p class="note">Every record in this report refers to IFC elements by GlobalId. The source file is identified by its SHA-256 hash.</p>' + missingList(miss));
+        ]) + `<p class="note">Every record in this report refers to IFC elements by GlobalId${summary && summary.surveyCount ? " and to surveyed components by their component ID" : ""}. The source file is identified by its SHA-256 hash.</p>` + missingList(miss));
+      }
+      case "survey": {
+        const sv = project.survey;
+        if (!sv) return h("Building survey", '<p class="note">This project has no building survey.</p>');
+        const st = surveyStats(sv);
+        const fl = sortedFloors(sv);
+        const floorRows = fl.map((f) => [f.name, rf(f.elevation, 2), rf(f.height, 2), sv.components.filter((c) => c.floorId === f.id).length, f.plan && f.plan.sha256 ? f.plan.fileName : null]);
+        const provRows = PROVENANCE.map((p) => [p.label, st.byProvenance[p.id] || 0]).filter((r) => r[1]);
+        return h("Building survey", `<p>${st.components} components recorded on ${st.floors} floor${st.floors === 1 ? "" : "s"}${st.documents ? `, with ${st.documents} document${st.documents === 1 ? "" : "s"} on file` : ""}. Each recorded value carries its provenance: manual, taken from drawings, imported, estimated or inspection verified. Dimensions that were not measured keep the component type's placeholder and are marked estimated. ${st.linked ? `${st.linked} component${st.linked === 1 ? " is" : "s are"} linked to IFC elements and reported under them.` : ""}</p>` + table(["Floor", "Elevation m", "Height m", "Components", "Tracing plan"], floorRows) + table(["Component type", "Components"], st.types.map(([t, n]) => [(SURVEY_TYPE[t] || {}).label || t, n])) + (provRows.length ? table(["Provenance of recorded values", "Values"], provRows) : "") + (sv.documents.length ? table(["Document", "Kind", "Floor", "SHA-256"], sv.documents.map((d) => [d.title || d.fileName, DOCUMENT_KIND_LABEL[d.kind] || d.kind, (sv.floors.find((f) => f.id === d.floorId) || {}).name || null, d.sha256 ? `${d.sha256.slice(0, 16)}\u2026` : null])) : "") + missingList([
+          ...st.missingByField.map(([k, n]) => `${n} component${n === 1 ? "" : "s"} without ${(FLAG_LABEL[k] || k).toLowerCase()}.`),
+          st.estimatedValues && `${st.estimatedValues} recorded values are estimates.`,
+          st.autoPlaced && `${st.autoPlaced} imported components were placed automatically and are not at their real position.`,
+          st.recordedValues - st.verifiedValues > 0 && `${st.recordedValues - st.verifiedValues} of ${st.recordedValues} recorded values are not inspection verified.`
+        ].filter(Boolean)));
       }
       case "inventory": {
         const inv = ctx.inventory;
         if (!inv) return h("Material inventory", '<p class="note">The inventory was not ready when the report was generated.</p>');
         const s = inv.summary;
-        return h("Material inventory", `<p>Materials resolved per IfcRelAssociatesMaterial (instance before type), split into layers, constituents and profiles; quantities from IfcElementQuantity converted with the project units, or from closed mesh geometry; mass = volume \xD7 density with the density's source recorded.</p>` + table(["Category", "Rows", "Elements", "Volume known m\xB3", "Mass known t", "Rows with mass"], s.categories.map((c) => [c.label, c.rows, c.elements, rf(c.volume, 2), c.massRows ? rf(c.mass / 1e3, 2) : null, `${c.massRows} of ${c.rows}`])) + `<p>Total: ${s.total.rows} rows for ${inv.elementCount} elements; ${rf(s.total.volume, 2)} m\xB3 and ${rf(s.total.mass / 1e3, 2)} t where known.</p>` + missingList([s.missingVolume && `${s.missingVolume} rows without a volume.`, s.missingDensity && `${s.missingDensity} rows without a density.`, s.noMaterial && `${s.noMaterial} elements without a material.`, s.unclassified && `${s.unclassified} rows with an unclassified material.`].filter(Boolean)));
+        return h("Material inventory", `<p>${model.isSurvey ? "Materials and dimensions as recorded in the building survey; volumes of solid sections from length \xD7 width \xD7 height, of profiles from cross-section area \xD7 length, and of doors, windows and other assemblies only where a volume or mass was recorded" : "Materials resolved per IfcRelAssociatesMaterial (instance before type), split into layers, constituents and profiles; quantities from IfcElementQuantity converted with the project units, or from closed mesh geometry"}${model.hasSurvey ? "; surveyed components use their recorded dimensions" : ""}; mass = volume \xD7 density with the density's source recorded.</p>` + table(["Category", "Rows", "Elements", "Volume known m\xB3", "Mass known t", "Rows with mass"], s.categories.map((c) => [c.label, c.rows, c.elements, rf(c.volume, 2), c.massRows ? rf(c.mass / 1e3, 2) : null, `${c.massRows} of ${c.rows}`])) + `<p>Total: ${s.total.rows} rows for ${inv.elementCount} elements; ${rf(s.total.volume, 2)} m\xB3 and ${rf(s.total.mass / 1e3, 2)} t where known.</p>` + missingList([s.missingVolume && `${s.missingVolume} rows without a volume.`, s.missingDensity && `${s.missingDensity} rows without a density.`, s.noMaterial && `${s.noMaterial} elements without a material.`, s.unclassified && `${s.unclassified} rows with an unclassified material.`].filter(Boolean)));
       }
       case "passports": {
         const pp = ctx.passports ? [...ctx.passports.values()] : [];
         if (!pp.length) return h("Material passports", '<p class="note">No passports: the inventory was not ready.</p>');
         const st = countBy(pp.filter((p) => p.stored), (p) => p.status);
         const avg = pp.reduce((a, p) => a + completeness(p).pct, 0) / pp.length;
-        return h("Material passports", `<p>${pp.length} components have a passport; ${pp.filter((p) => p.stored).length} were edited by hand, the rest are automatic drafts filled only from IFC fields and the inventory. Average completeness of required fields: ${rf(avg, 0)}%.</p>` + (st.size ? table(["Status", "Passports"], [...st].map(([k, n]) => [PASSPORT_STATUS_LABEL[k] || k, n])) : "") + `<p class="note">Approval requires recorded evidence, a defined application, a completed inspection and verification.</p>` + missingList(avg < 100 ? [`On average ${rf(100 - avg, 0)}% of required passport fields are empty.`] : []));
+        return h("Material passports", `<p>${pp.length} components have a passport; ${pp.filter((p) => p.stored).length} were edited by hand, the rest are automatic drafts filled only from ${model.isSurvey ? "the building survey" : model.hasSurvey ? "IFC fields, the building survey" : "IFC fields"} and the inventory. Average completeness of required fields: ${rf(avg, 0)}%.</p>` + (st.size ? table(["Status", "Passports"], [...st].map(([k, n]) => [PASSPORT_STATUS_LABEL[k] || k, n])) : "") + `<p class="note">Approval requires recorded evidence, a defined application, a completed inspection and verification.</p>` + missingList(avg < 100 ? [`On average ${rf(100 - avg, 0)}% of required passport fields are empty.`] : []));
       }
       case "assessment": {
         const res = ctx.assessment ? ctx.assessment.results : [];
@@ -123,11 +163,12 @@
         if (!d || !d.analysis) return h("Deconstruction plan", '<p class="note">No plan.</p>');
         const a = d.analysis;
         const st = Array.from({ length: a.stages }, (_, i) => [i + 1, a.order.filter((g) => a.stage.get(g) === i + 1).length]);
-        return h("Deconstruction plan", `<p>${deconTasks(model).length} removal tasks; ${a.edges} confirmed dependencies (${d.plan.deps.filter((x) => x.status === "suggested").length} suggestions unresolved, ${d.plan.deps.filter((x) => x.status === "rejected").length} rejected). Dependencies were suggested from IFC fill and void relations and from stacked geometry, and enter the sequence only when confirmed. ${a.cycles.length ? `<b>${a.cycles.length} cycles block the sequence.</b>` : `${a.stages} stages by longest-path layering.`} ${a.cpm ? `Critical path ${rf(a.cpm.total, 1)} ${d.plan.durationUnit} with unlimited crews.` : "No critical path: durations are missing."}</p>` + (st.length ? table(["Stage", "Tasks"], st) : "") + missingList(d.warnings.map((w) => w.text)));
+        return h("Deconstruction plan", `<p>${deconTasks(model).length} removal tasks; ${a.edges} confirmed dependencies (${d.plan.deps.filter((x) => x.status === "suggested").length} suggestions unresolved, ${d.plan.deps.filter((x) => x.status === "rejected").length} rejected). Dependencies were suggested from ${model.isSurvey ? "the host walls recorded for doors and windows and from stacked survey geometry" : "IFC fill and void relations and from stacked geometry"}, and enter the sequence only when confirmed. ${a.cycles.length ? `<b>${a.cycles.length} cycles block the sequence.</b>` : `${a.stages} stages by longest-path layering.`} ${a.cpm ? `Critical path ${rf(a.cpm.total, 1)} ${d.plan.durationUnit} with unlimited crews.` : "No critical path: durations are missing."}</p>` + (st.length ? table(["Stage", "Tasks"], st) : "") + missingList(d.warnings.map((w) => w.text)));
       }
       case "limitations":
         return h("Limitations", `<ul>
-        <li>All results depend on the IFC model and on the data entered; missing values are reported as missing, never assumed.</li>
+        <li>All results depend on the ${model.isSurvey ? "building survey" : "IFC model"} and on the data entered; missing values are reported as missing, never assumed.</li>
+        ${project.survey ? "<li>Surveyed components are drawn as simplified boxes from their recorded dimensions and positions. This is a manual reconstruction for orientation, not a measured survey, scan-to-BIM or photogrammetric model; placeholder dimensions are marked estimated.</li>" : ""}
         <li>Quantities derived from tessellated geometry are valid only for closed meshes and are labelled as calculated.</li>
         <li>Reuse screening is a custom index for prioritising components, not a certified structural or regulatory assessment.</li>
         <li>Compatibility in Reuse Matching uses only the criteria supplied. Structural suitability of reused components requires professional verification and, where required, testing.</li>
@@ -139,7 +180,7 @@
     }
   }
   function combinedReportHtml(ctx, sectionIds, generatedAt = (/* @__PURE__ */ new Date()).toISOString()) {
-    const ids = REPORT_SECTIONS.map((s) => s.id).filter((id) => sectionIds.includes(id));
+    const ids = REPORT_SECTIONS.map((s) => s.id).filter((id) => sectionIds.includes(id) && (id !== "survey" || ctx.project.survey));
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escHtml(ctx.project.name)} \xB7 BIM2REUSE report</title><style>
     body{font:12px/1.5 'IBM Plex Sans',system-ui,sans-serif;color:#1b1b1b;margin:28px auto;max-width:900px;padding:0 24px}
     h1{font-size:22px;margin:0 0 2px}h2{font-size:15px;margin:26px 0 8px;padding-bottom:4px;border-bottom:2px solid #16804a}h3{font-size:12.5px;margin:12px 0 4px}
@@ -147,7 +188,7 @@
     .note{color:#6b6b6b}.warn{color:#a4600f}.toc{columns:2;padding-left:18px}section{break-inside:auto}h2{break-after:avoid}
     @media print{body{margin:0;max-width:none}a{color:inherit;text-decoration:none}}</style></head><body>
     <h1>${escHtml(ctx.project.name)}</h1>
-    <p class="note">BIM2REUSE project report \xB7 source model ${escHtml(ctx.model.fileName)} \xB7 generated ${escHtml(new Date(generatedAt).toLocaleString("en-GB"))}</p>
+    <p class="note">BIM2REUSE project report \xB7 ${ctx.model.isSurvey ? "building survey, no IFC model" : `source model ${escHtml(ctx.model.fileName)}${ctx.model.hasSurvey ? " and building survey" : ""}`} \xB7 generated ${escHtml(new Date(generatedAt).toLocaleString("en-GB"))}</p>
     <ol class="toc">${ids.map((id) => `<li><a href="#${id}">${escHtml(REPORT_SECTIONS.find((s) => s.id === id).label)}</a></li>`).join("")}</ol>
     ${ids.map((id) => sectionHtml(id, ctx)).join("\n")}
     </body></html>`;

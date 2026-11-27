@@ -61,7 +61,7 @@ function ReportsPage({ ctx, toast, onExportPackage, onOpenModule }) {
 
 /** Overview cards: what each module holds for this project. */
 function ModuleCards({ stats, onOpenModule }) {
-  const ids = ['materials', 'passports', 'assessment', 'deconstruction', 'bank', 'matching', 'carbon'];
+  const ids = [...(stats.survey ? ['survey'] : []), 'materials', 'passports', 'assessment', 'deconstruction', 'bank', 'matching', 'carbon'];
   return (
     <div className="module-cards">
       {ids.map(id => {

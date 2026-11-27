@@ -104,6 +104,9 @@ const SOURCE_LABEL = {
   derived: 'Calculated',
   dataset: 'Imported from dataset',
   manual: 'Manually entered',
+  drawing: 'Taken from drawings',
+  imported: 'Imported from file',
+  estimated: 'Estimated',
   verified: 'Inspection verified',
   assumed: 'Assumed',
   missing: 'Missing',
@@ -113,6 +116,7 @@ function qv(value, unit, source, method, extra = {}) {
   return { value, unit, source, method, verification: source === 'verified' ? 'verified' : 'unverified', ...extra };
 }
 const missing = (unit, method) => qv(null, unit, 'missing', method);
+const missingQ = missing;
 
 // Names used by the standard base quantity sets (IFC2x3 and IFC4), in order of preference.
 const QTO = {
@@ -149,8 +153,9 @@ function boxLimits(el) {
   };
 }
 
-/** Element-level quantities with provenance. */
+/** Element-level quantities with provenance. Surveyed components carry theirs (core/survey.jsx). */
 function elementQuantities(el) {
+  if (el.surveyQ) return el.surveyQ;
   const limits = boxLimits(el);
   const issues = [];
   const pick = (kind, wanted, unit) => {
@@ -242,6 +247,7 @@ function splitMaterials(def, q) {
 function densityFor(item, category, settings, matProps) {
   const manual = settings.densities && settings.densities[item.name];
   if (manual && manual.value > 0) return qv(manual.value, 'kg/m³', 'manual', 'Entered for this material', { reference: manual.reference || null });
+  if (item.surveyDensity && item.surveyDensity.value > 0) return item.surveyDensity;
   const fromIfc = item.id != null && matProps.get(item.id);
   if (fromIfc) return qv(fromIfc.density, 'kg/m³', 'ifc', `${fromIfc.setName} MassDensity${fromIfc.unitDeclared ? '' : ' (unit not declared in the file; kg/m³ assumed)'}`);
   const ds = settings.datasets && settings.datasets[category];
@@ -270,8 +276,9 @@ function buildInventory(model, settings = {}) {
     parts.forEach((part, i) => {
       const name = part.noMaterial ? '' : (part.name || '(unnamed material)');
       const manualCat = name && settings.classification ? settings.classification[name] : null;
-      const autoCat = part.noMaterial ? null : classifyMaterial(part.name, part.category);
-      const category = manualCat || autoCat || 'unclassified';
+      const surveyCat = part.noMaterial ? null : (CATEGORY_IDS.includes(part.surveyCategory) ? part.surveyCategory : null);
+      const autoCat = part.noMaterial || surveyCat ? null : classifyMaterial(part.name, part.category);
+      const category = manualCat || surveyCat || autoCat || 'unclassified';
       const density = part.noMaterial ? missing('kg/m³', 'No material assigned') : densityFor(part, category, settings, matProps);
       let mass;
       if (parts.length === 1 && q.mass) mass = q.mass;
@@ -281,7 +288,7 @@ function buildInventory(model, settings = {}) {
         mass = missing('kg', part.volume.value == null ? 'Volume missing' : 'Density missing');
       }
       rows.push({
-        key: `${el.globalId || '#' + el.expressId}:${i}`,
+        key: `${componentIdOf(el) || '#' + el.expressId}:${i}`,
         expressId: el.expressId,
         globalId: el.globalId,
         ifcClass: el.ifcClass,
@@ -297,7 +304,9 @@ function buildInventory(model, settings = {}) {
         fraction: part.fraction != null ? part.fraction : null,
         profileName: part.profileName || null,
         category,
-        categorySource: manualCat ? 'manual' : autoCat ? 'keyword' : 'none',
+        categorySource: manualCat ? 'manual' : surveyCat ? 'survey' : autoCat ? 'keyword' : 'none',
+        componentId: componentIdOf(el),
+        survey: !!el.survey,
         volume: part.volume,
         area: part.area,
         length: parts.length === 1 && q.length.value != null ? q.length : null,
@@ -371,11 +380,11 @@ async function expandForInventory(model, onProgress) {
 
 function inventoryCsv(inv, sourceFile) {
   const num = (x) => (x && x.value != null ? Number(x.value.toPrecision(10)) : '');
-  const head = ['GlobalId', 'ExpressId', 'IfcClass', 'ElementName', 'Storey', 'Material', 'MaterialCategory', 'CategorySource', 'Association', 'Definition', 'Layer', 'LayerThickness_mm',
+  const head = ['GlobalId', 'ComponentId', 'ExpressId', 'IfcClass', 'ElementName', 'Storey', 'Material', 'MaterialCategory', 'CategorySource', 'Association', 'Definition', 'Layer', 'LayerThickness_mm',
     'Volume_m3', 'VolumeSource', 'VolumeMethod', 'Area_m2', 'AreaSource', 'Density_kg_m3', 'DensitySource', 'DensityReference', 'Mass_kg', 'MassSource', 'MassMethod', 'SourceFile'];
   const lines = [head.join(',')];
   inv.rows.forEach(r => lines.push([
-    r.globalId, r.expressId, r.ifcClass, r.name, r.storey, r.noMaterial ? '' : r.material, CATEGORY_LABEL[r.category], r.categorySource, r.association, r.definition,
+    r.globalId, r.componentId, r.expressId, r.ifcClass, r.name, r.storey, r.noMaterial ? '' : r.material, CATEGORY_LABEL[r.category], r.categorySource, r.association, r.definition,
     r.layer ? `${r.layer.index}/${r.layer.of}` : '', r.layer && r.layer.thickness ? (r.layer.thickness * 1000).toFixed(1) : '',
     num(r.volume), SOURCE_LABEL[r.volume.source], r.volume.method, num(r.area), r.area ? SOURCE_LABEL[r.area.source] : '',
     num(r.density), SOURCE_LABEL[r.density.source], r.density.reference || '', num(r.mass), SOURCE_LABEL[r.mass.source], r.mass.method, sourceFile,
@@ -389,7 +398,7 @@ function csvCellPlain(v) {
 }
 
 Object.assign(window, {
-  MATERIAL_CATEGORIES, CATEGORY_IDS, CATEGORY_LABEL, REFERENCE_DENSITIES, SOURCE_LABEL,
+  MATERIAL_CATEGORIES, CATEGORY_IDS, CATEGORY_LABEL, REFERENCE_DENSITIES, SOURCE_LABEL, qv, missingQ,
   classifyMaterial, meshVolume, elementQuantities, splitMaterials, buildInventory, summarizeInventory,
   primaryCategoryByElement, expandForInventory, inventoryCsv, csvCellPlain,
 });

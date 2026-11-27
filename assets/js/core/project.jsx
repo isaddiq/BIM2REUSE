@@ -1,24 +1,32 @@
 /**
  * BIM2REUSE projects: a versioned, local-only project format.
  *
- * A project records the source IFC model(s) and everything the user adds to them.
- * It never stores derived geometry: reopening a project re-parses its IFC file,
- * which is kept in the local store (IndexedDB) or inside an exported package.
+ * A project records its source data and everything the user adds to it. It starts either
+ * from an IFC model (workflow "ifc") or from a building survey of an existing building without
+ * BIM (workflow "survey"); a survey project can be linked to an IFC model later.
+ * It never stores derived geometry: reopening a project re-parses its IFC file, which is kept
+ * in the local store (IndexedDB) or inside an exported package, and rebuilds survey geometry
+ * from the recorded dimensions.
  *
  *   project.json (format "bim2reuse-project", version PROJECT_VERSION)
- *     id, name, createdAt, updatedAt, app
+ *     id, name, createdAt, updatedAt, app, workflow ("ifc" | "survey")
  *     models[]      { key, role, fileName, fileSize, schema, sha256, ifcProjectName, elementCount }
+ *     survey        building, floors, surveyed components and documents (core/survey.jsx), or null
  *     viewer        saved views, selection sets, issues and measurements, with element
- *                   references stored as GlobalIds (see core/registry.jsx)
+ *                   references stored as GlobalIds or survey component IDs (see core/registry.jsx)
  *     modules       data owned by the circular-construction modules (added phase by phase)
  *
- *   Package (.bim2reuse.zip) = project.json + models/<sha256>.ifc
+ *   Package (.bim2reuse.zip) = project.json + models/<sha256>.ifc + evidence/<sha256>
+ *                              + documents/<sha256> (survey documents, photos and plan images)
+ *
+ * Version history: 1 IFC projects; 2 adds `workflow` and `survey` (version 1 files open unchanged).
  *
  * The pure functions here run in Node tests. ProjectStore needs IndexedDB (browser only).
  */
 
 const PROJECT_FORMAT = 'bim2reuse-project';
-const PROJECT_VERSION = 1;
+const PROJECT_VERSION = 2;
+const WORKFLOWS = ['ifc', 'survey'];
 const APP_INFO = { name: 'BIM2REUSE', version: '0.1.0' };
 
 function newId() {
@@ -26,7 +34,7 @@ function newId() {
   return 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
-function createProject(name = 'Untitled project') {
+function createProject(name = 'Untitled project', { workflow = 'ifc', survey = null } = {}) {
   const now = new Date().toISOString();
   return {
     format: PROJECT_FORMAT,
@@ -36,10 +44,17 @@ function createProject(name = 'Untitled project') {
     createdAt: now,
     updatedAt: now,
     app: { ...APP_INFO },
+    workflow,
     models: [],
+    survey,
     viewer: emptyViewerData(),
     modules: {},
   };
+}
+
+/** A survey-based project (Workflow 2) for an existing building without a BIM model. */
+function createSurveyProject(name, surveyOptions = {}) {
+  return createProject(name || 'Building survey', { workflow: 'survey', survey: createSurvey(surveyOptions) });
 }
 
 function emptyViewerData() {
@@ -112,19 +127,26 @@ function validateProject(json) {
   if (typeof json.version !== 'number' || json.version < 1) throw new Error('The project has no valid format version.');
   if (json.version > PROJECT_VERSION) throw new Error(`The project uses format version ${json.version}; this copy of BIM2REUSE reads up to version ${PROJECT_VERSION}. Update the app to open it.`);
   if (!Array.isArray(json.models)) throw new Error('The project has no model list.');
+  const survey = json.survey ? normaliseSurvey(json.survey) : null;
+  if (json.survey && !survey) throw new Error('The project’s building survey is not readable.');
+  const workflow = WORKFLOWS.includes(json.workflow) ? json.workflow : (survey && !json.models.length ? 'survey' : 'ifc');
   return {
     ...createProject(json.name || 'Untitled project'),
     ...json,
+    version: PROJECT_VERSION,
+    workflow,
+    survey,
     viewer: { ...emptyViewerData(), ...(json.viewer || {}) },
     modules: json.modules || {},
   };
 }
 
-/** Every stored file the project references: source models and passport evidence. */
+/** Every stored file the project references: source models, passport evidence and survey documents. */
 function projectFileRefs(project) {
   const refs = project.models.map(m => ({ sha256: m.sha256, fileName: m.fileName, kind: 'model' }));
   const records = (project.modules && project.modules.passports && project.modules.passports.records) || {};
   Object.values(records).forEach(r => (r.evidence || []).forEach(e => { if (e.sha256) refs.push({ sha256: e.sha256, fileName: e.fileName, kind: 'evidence' }); }));
+  surveyFileRefs(project.survey).forEach(r => refs.push(r));
   const seen = new Set();
   return refs.filter(r => (seen.has(r.sha256) ? false : (seen.add(r.sha256), true)));
 }
@@ -138,9 +160,9 @@ function packProject(project, filesBySha) {
   const files = [{ name: 'project.json', data: JSON.stringify(project, null, 2) }];
   projectFileRefs(project).forEach(ref => {
     const bytes = filesBySha.get(ref.sha256);
-    if (bytes) files.push({ name: ref.kind === 'model' ? `models/${ref.sha256}.ifc` : `evidence/${ref.sha256}`, data: bytes });
+    if (bytes) files.push({ name: ref.kind === 'model' ? `models/${ref.sha256}.ifc` : ref.kind === 'document' ? `documents/${ref.sha256}` : `evidence/${ref.sha256}`, data: bytes });
   });
-  files.push({ name: 'README.txt', data: `BIM2REUSE project package\n\nproject.json   project data (format ${PROJECT_FORMAT}, version ${project.version})\nmodels/        source IFC files, named by their SHA-256 hash\nevidence/      passport evidence files, named by their SHA-256 hash\n\nOpen it in BIM2REUSE with Open project > Import package.\n` });
+  files.push({ name: 'README.txt', data: `BIM2REUSE project package\n\nproject.json   project data (format ${PROJECT_FORMAT}, version ${project.version})\nmodels/        source IFC files, named by their SHA-256 hash\nevidence/      passport evidence files, named by their SHA-256 hash\ndocuments/     building survey documents, photographs and plan images, named by their SHA-256 hash\n\nOpen it in BIM2REUSE with Open project > Import package.\n` });
   return makeZip(files);
 }
 
@@ -154,7 +176,7 @@ async function unpackProject(bytes) {
   const project = validateProject(json);
   const files = new Map();
   for (const e of entries) {
-    const m = /^(?:models|evidence)\/([0-9a-f]{64})(?:\.ifc)?$/.exec(e.name);
+    const m = /^(?:models|evidence|documents)\/([0-9a-f]{64})(?:\.ifc)?$/.exec(e.name);
     if (!m) continue;
     const actual = await sha256Hex(e.data);
     if (actual !== m[1]) throw new Error(`${e.name} does not match its SHA-256 hash; the package is damaged.`);
@@ -162,7 +184,8 @@ async function unpackProject(bytes) {
   }
   const missingModels = project.models.filter(m => !files.has(m.sha256)).map(m => m.fileName);
   const missingEvidence = projectFileRefs(project).filter(r => r.kind === 'evidence' && !files.has(r.sha256)).map(r => r.fileName);
-  return { project, files, missingModels, missingEvidence };
+  const missingDocuments = projectFileRefs(project).filter(r => r.kind === 'document' && !files.has(r.sha256)).map(r => r.fileName);
+  return { project, files, missingModels, missingEvidence, missingDocuments };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +236,12 @@ const ProjectStore = {
   async list() {
     const all = await tx(['projects'], 'readonly', t => idbRequest(t.objectStore('projects').getAll()));
     return all
-      .map(p => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt, models: p.models.map(m => ({ fileName: m.fileName, fileSize: m.fileSize, schema: m.schema, sha256: m.sha256 })) }))
+      .map(p => ({
+        id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt,
+        workflow: p.workflow || 'ifc',
+        survey: p.survey ? { components: (p.survey.components || []).length, floors: (p.survey.floors || []).length, building: (p.survey.building && p.survey.building.name) || '' } : null,
+        models: p.models.map(m => ({ fileName: m.fileName, fileSize: m.fileSize, schema: m.schema, sha256: m.sha256 })),
+      }))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   },
   get(id) {
@@ -237,7 +265,7 @@ const ProjectStore = {
     const rec = await tx(['files'], 'readonly', t => idbRequest(t.objectStore('files').get(sha256)));
     return rec ? new Uint8Array(rec.bytes) : null;
   },
-  /** Delete a project and any stored IFC file no other project uses. */
+  /** Delete a project and any stored file (IFC, evidence, survey document) no other project uses. */
   delete(id) {
     return tx(['projects', 'files'], 'readwrite', async t => {
       const ps = t.objectStore('projects');
@@ -263,8 +291,8 @@ const ProjectStore = {
 };
 
 Object.assign(window, {
-  PROJECT_FORMAT, PROJECT_VERSION, APP_INFO,
-  createProject, emptyViewerData, sha256Hex, describeModel,
+  PROJECT_FORMAT, PROJECT_VERSION, APP_INFO, WORKFLOWS,
+  createProject, createSurveyProject, emptyViewerData, sha256Hex, describeModel,
   captureViewerData, restoreViewerData, validateProject, safeFileName, projectFileRefs,
   packProject, unpackProject, ProjectStore,
 });

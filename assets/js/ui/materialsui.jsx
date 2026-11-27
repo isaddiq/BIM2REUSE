@@ -169,7 +169,7 @@ function filterRows(inv, filter) {
     if (filter.gap === 'issues' && !(r.issues && r.issues.length)) return false;
     if (filter.selectedOnly && !filter.selectedIds.has(r.expressId)) return false;
     if (!q) return true;
-    return `${r.globalId} ${r.ifcClass} ${r.name} ${r.material} ${CATEGORY_LABEL[r.category]} ${r.storey}`.toLowerCase().includes(q);
+    return `${r.componentId} ${r.ifcClass} ${r.name} ${r.material} ${CATEGORY_LABEL[r.category]} ${r.storey}`.toLowerCase().includes(q);
   });
 }
 
@@ -190,7 +190,7 @@ function InventoryPanel({ inv, status, model, filter, setFilter, viewerState, di
   }, [sel, inv]);
 
   const columns = [
-    { key: 'gid', label: 'Component ID', width: 130, render: r => <span className="mono" title={r.globalId}>{r.globalId ? r.globalId.slice(0, 12) + '…' : `#${r.expressId}`}</span>, sort: r => r.globalId },
+    { key: 'gid', label: 'Component ID', width: 130, render: r => <span className="mono" title={r.globalId || (r.componentId ? `Surveyed component ${r.componentId}` : '')}>{r.componentId ? r.componentId.slice(0, 14) + (r.componentId.length > 14 ? '…' : '') : `#${r.expressId}`}</span>, sort: r => r.componentId },
     { key: 'cls', label: 'IFC type', width: 150, render: r => <span className="mono">{r.ifcClass.replace(/^Ifc/, '')}</span>, sort: r => r.ifcClass },
     { key: 'name', label: 'Element', width: 'minmax(140px, 1.3fr)', render: r => <span title={r.name}>{r.name || <span className="muted">—</span>}</span>, sort: r => r.name },
     { key: 'mat', label: 'Material', width: 'minmax(140px, 1.2fr)', render: r => (r.noMaterial ? <span className="qty-missing">No material</span> : <span title={r.setName ? `${r.definition}: ${r.setName}` : r.definition}>{r.material}{r.layer ? <span className="muted"> · layer {r.layer.index}/{r.layer.of}</span> : null}</span>), sort: r => r.material },
@@ -200,8 +200,8 @@ function InventoryPanel({ inv, status, model, filter, setFilter, viewerState, di
     { key: 'mass', label: 'Mass kg', width: 96, align: 'end', render: r => <QtyCell q={r.mass} digits={1} />, sort: r => r.mass.value },
     { key: 'storey', label: 'Storey', width: 100, render: r => r.storey || <span className="muted">—</span>, sort: r => r.storey },
     { key: 'src', label: 'Data source', width: 150, render: r => <SourceBadge source={r.volume.source} title={r.volume.method} />, sort: r => r.volume.source },
-    { key: 'pp', label: 'Passport', width: 110, render: r => { const p = passportOf && passportOf(r.globalId); return p ? <span className="status-text">{p}</span> : <span className="muted">None</span>; } },
-    { key: 'reuse', label: 'Reuse', width: 120, render: r => { const a = assessmentOf && assessmentOf(r.globalId); return a ? <span className="status-text">{a}</span> : <span className="muted">Not assessed</span>; } },
+    { key: 'pp', label: 'Passport', width: 110, render: r => { const p = passportOf && passportOf(r.componentId); return p ? <span className="status-text">{p}</span> : <span className="muted">None</span>; } },
+    { key: 'reuse', label: 'Reuse', width: 120, render: r => { const a = assessmentOf && assessmentOf(r.componentId); return a ? <span className="status-text">{a}</span> : <span className="muted">Not assessed</span>; } },
   ];
   const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, sort]);
 
@@ -335,7 +335,7 @@ function MaterialInspector({ inv, status, row, model, settings, setSettings, onZ
       <header className="insp-header">
         <div className="insp-class"><span className="mono">{row.ifcClass}</span>{others.length > 1 && <span className="insp-multi">{others.length} material rows</span>}</div>
         <h2 className="insp-name">{row.noMaterial ? 'No material assigned' : row.material}</h2>
-        <div className="insp-guid"><span className="mono">{row.globalId}</span></div>
+        <div className="insp-guid"><span className="mono">{row.globalId || `${row.componentId} · surveyed`}</span></div>
         <div className="insp-actions">
           <button type="button" className="btn btn-sm" onClick={() => onZoomTo([row.expressId])}><Icons.Focus size={14} /> Zoom</button>
           <button type="button" className="btn btn-sm" onClick={() => dispatch({ type: 'isolate', ids: [row.expressId] })}><Icons.Isolate size={14} /> Isolate</button>

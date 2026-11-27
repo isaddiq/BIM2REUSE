@@ -32,8 +32,9 @@
     model.elements.forEach((e) => {
       if (e.globalId) guidCounts.set(e.globalId, (guidCounts.get(e.globalId) || 0) + 1);
     });
-    const duplicateGlobalIds = physical.filter((e) => e.globalId && guidCounts.get(e.globalId) > 1).map((e) => e.expressId);
-    const missingGlobalIds = physical.filter((e) => !e.globalId).map((e) => e.expressId);
+    const duplicateGlobalIds = physical.filter((e) => !e.survey && e.globalId && guidCounts.get(e.globalId) > 1).map((e) => e.expressId);
+    const missingGlobalIds = physical.filter((e) => !e.survey && !e.globalId).map((e) => e.expressId);
+    const surveyed = physical.filter((e) => e.survey);
     return {
       physicalCount: physical.length,
       physicalIds: physical.map((e) => e.expressId),
@@ -51,6 +52,9 @@
       withClassification,
       duplicateGlobalIds,
       missingGlobalIds,
+      ifcCount: physical.length - surveyed.length,
+      surveyCount: surveyed.length,
+      surveyIds: surveyed.map((e) => e.expressId),
       fills: model.elementRelations ? model.elementRelations.fills.size : 0,
       voids: model.elementRelations ? [...model.elementRelations.voids.values()].reduce((a, v) => a + v.length, 0) : 0
     };

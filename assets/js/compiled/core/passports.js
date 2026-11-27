@@ -26,12 +26,13 @@
       id: "identification",
       label: "Identification",
       fields: [
-        { key: "passportId", label: "Passport ID", type: "text", readOnly: true, auto: (c) => ({ value: `PP-${c.el.globalId}`, source: "derived", method: "Passport ID from the IFC GlobalId" }) },
-        { key: "globalId", label: "IFC GlobalId", type: "text", readOnly: true, required: true, auto: (c) => c.el.globalId && { value: c.el.globalId, source: "ifc", method: "IfcRoot.GlobalId" } },
-        { key: "sourceProject", label: "Source project", type: "text", required: true, auto: (c) => ({ value: c.sourceProject, source: "ifc", method: "IfcProject.Name and file name" }) },
-        { key: "elementType", label: "Element type", type: "text", readOnly: true, required: true, auto: (c) => ({ value: c.el.ifcClass + (c.el.predefinedType && c.el.predefinedType !== "NOTDEFINED" ? ` (${c.el.predefinedType})` : ""), source: "ifc", method: "IFC class and PredefinedType" }) },
-        { key: "elementName", label: "Element name", type: "text", required: true, auto: (c) => c.el.name && { value: c.el.name, source: "ifc", method: "IfcRoot.Name" } },
-        { key: "storey", label: "Building storey", type: "text", auto: (c) => c.el.storey && { value: c.el.storey.name || c.el.storey.longName, source: "ifc", method: "IfcRelContainedInSpatialStructure" } },
+        { key: "passportId", label: "Passport ID", type: "text", readOnly: true, auto: (c) => ({ value: `PP-${componentIdOf(c.el)}`, source: "derived", method: c.survey ? "Passport ID from the survey component ID" : "Passport ID from the IFC GlobalId" }) },
+        { key: "componentId", label: "Component ID", type: "text", readOnly: true, required: true, auto: (c) => componentIdOf(c.el) && { value: componentIdOf(c.el), source: c.survey ? "derived" : "ifc", method: c.survey ? "Internal component ID assigned in the building survey (no IFC GlobalId)" : "IfcRoot.GlobalId" } },
+        { key: "globalId", label: "IFC GlobalId", type: "text", readOnly: true, auto: (c) => c.el.globalId && { value: c.el.globalId, source: "ifc", method: "IfcRoot.GlobalId" } },
+        { key: "sourceProject", label: "Source project", type: "text", required: true, auto: (c) => ({ value: c.sourceProject, source: c.survey ? "manual" : "ifc", method: c.survey ? "Building name in the survey" : "IfcProject.Name and file name" }) },
+        { key: "elementType", label: "Element type", type: "text", readOnly: true, required: true, auto: (c) => ({ value: c.el.ifcClass + (c.el.predefinedType && c.el.predefinedType !== "NOTDEFINED" ? ` (${c.el.predefinedType})` : ""), source: c.survey ? "manual" : "ifc", method: c.survey ? "Component type recorded in the survey" : "IFC class and PredefinedType" }) },
+        { key: "elementName", label: "Element name", type: "text", required: true, auto: (c) => c.el.name && { value: c.el.name, source: c.survey ? "manual" : "ifc", method: c.survey ? "Name in the survey" : "IfcRoot.Name" } },
+        { key: "storey", label: "Building storey", type: "text", auto: (c) => c.el.storey && { value: c.el.storey.name || c.el.storey.longName, source: c.survey ? "manual" : "ifc", method: c.survey ? "Floor in the survey" : "IfcRelContainedInSpatialStructure" } },
         { key: "manufacturer", label: "Manufacturer", type: "text", required: true, auto: (c) => propAuto(c, /^Manufacturer$/i) },
         { key: "productReference", label: "Product reference", type: "text", auto: (c) => propAuto(c, /^(ModelReference|ModelLabel|ArticleNumber|ProductReference)$/i) },
         { key: "installationDate", label: "Installation date", type: "date", auto: (c) => propAuto(c, /^(InstallationDate|DateOfInstallation)$/i) }
@@ -47,14 +48,14 @@
         { key: "area", label: "Area", type: "number", unit: "m\xB2", auto: (c) => qAuto(c.q.area) },
         { key: "volume", label: "Volume", type: "number", unit: "m\xB3", required: true, auto: (c) => qAuto(c.q.volume) },
         { key: "mass", label: "Mass", type: "number", unit: "kg", required: true, auto: (c) => c.massQ && qAuto(c.massQ) },
-        { key: "crossSection", label: "Cross-section", type: "text", auto: (c) => c.profileName && { value: c.profileName, source: "ifc", method: "IfcMaterialProfile.Profile" } }
+        { key: "crossSection", label: "Cross-section", type: "text", auto: (c) => c.survey ? c.survey.crossSection && { value: c.survey.crossSection, source: c.survey.prov.crossSection || "manual", method: "Cross-section in the survey" } : c.profileName && { value: c.profileName, source: "ifc", method: "IfcMaterialProfile.Profile" } }
       ]
     },
     {
       id: "materials",
       label: "Materials",
       fields: [
-        { key: "materialName", label: "Material", type: "text", required: true, auto: (c) => c.materialNames && { value: c.materialNames, source: "ifc", method: "IfcRelAssociatesMaterial" } },
+        { key: "materialName", label: "Material", type: "text", required: true, auto: (c) => c.materialNames && { value: c.materialNames, source: c.survey ? c.survey.prov.material || "manual" : "ifc", method: c.survey ? "Material in the survey" : "IfcRelAssociatesMaterial" } },
         { key: "materialCategory", label: "Material classification", type: "text", required: true, auto: (c) => c.categories && { value: c.categories, source: "derived", method: "Material inventory category" } },
         { key: "grade", label: "Grade", type: "text", required: true, auto: (c) => propAuto(c, /^(Grade|MaterialGrade|StrengthClass|SteelGrade|ConcreteGrade)$/i) },
         { key: "gradeVerified", label: "Grade verified", type: "enum", options: opt(["yes", "Yes, by test or certificate"], ["no", "No"]), required: true, auto: (c) => enumAuto(c, /^GradeVerified$/i, "gradeVerified") },
@@ -132,7 +133,7 @@
     for (const src of [c.el, c.type].filter(Boolean)) {
       for (const ps of src.propertySets || []) {
         const p = ps.properties.find((x) => re.test(x.name) && x.value != null && String(x.value).trim() !== "");
-        if (p) return { value: String(p.value), source: "ifc", method: `${ps.name}.${p.name}${src === c.type ? " (type)" : ""}` };
+        if (p) return { value: String(p.value), source: p.source || "ifc", method: p.source ? `Building survey (${ps.name}.${p.name})` : `${ps.name}.${p.name}${src === c.type ? " (type)" : ""}` };
       }
     }
     return null;
@@ -152,7 +153,8 @@
     var _a;
     const rows = (inventoryRows || []).filter((r) => r.expressId === el.expressId && !r.noMaterial);
     const elementRow = (inventoryRows || []).find((r) => r.expressId === el.expressId);
-    const q = elementRow ? { volume: elementRow.elementVolume, area: elementRow.area, length: elementRow.length, width: null, height: null } : { volume: null, area: null, length: null };
+    const sq = el.surveyQ || null;
+    const q = elementRow ? { volume: elementRow.elementVolume, area: elementRow.area, length: elementRow.length, width: sq ? sq.width : null, height: sq ? sq.height : null } : { volume: null, area: null, length: null, width: sq ? sq.width : null, height: sq ? sq.height : null };
     const massKnown = rows.length && rows.every((r) => r.mass.value != null);
     const massQ = massKnown ? rows.length === 1 ? rows[0].mass : { value: rows.reduce((a, r) => a + r.mass.value, 0), source: "derived", method: `Sum of ${rows.length} material rows (volume \xD7 density)` } : null;
     const densityQ = rows.length === 1 ? rows[0].density : null;
@@ -170,7 +172,8 @@
       categories: cats.length ? cats.join("; ") : null,
       composition,
       profileName: ((_a = rows.find((r) => r.profileName)) == null ? void 0 : _a.profileName) || null,
-      sourceProject: `${model.project && model.project.name || projectName || "Unnamed project"} (${model.fileName})`
+      sourceProject: el.survey ? `${model.survey && model.survey.building && model.survey.building.name || projectName || "Unnamed building"} (${SURVEY_FILE_NAME})` : `${model.project && model.project.name || projectName || "Unnamed project"} (${model.fileName})`,
+      survey: el.survey || null
     };
   }
   function resolvePassport(model, el, record, inventoryRows, projectName) {
@@ -191,7 +194,9 @@
       fields[f.key] = auto && auto.value != null && auto.value !== "" ? { ...auto, auto: true } : { value: null, source: "missing" };
     });
     return {
-      globalId: el.globalId,
+      componentId: componentIdOf(el),
+      globalId: el.globalId || null,
+      survey: !!el.survey,
       expressId: el.expressId,
       status: record && record.status || "draft",
       stored: !!record,
@@ -236,7 +241,8 @@
       out[f.label + (f.unit ? ` (${f.unit})` : "")] = x.value != null ? f.options ? (f.options.find((o) => o.id === String(x.value)) || {}).label || x.value : x.value : "";
       out[`${f.label} source`] = SOURCE_LABEL[x.source] || x.source;
     });
-    out.SourceFile = model.fileName;
+    out.ComponentId = p.componentId;
+    out.SourceFile = p.survey ? SURVEY_FILE_NAME : model.fileName;
     return out;
   }
   function passportsCsv(passports, model) {
@@ -257,15 +263,15 @@
       }).join("")}</table></section>`).join("");
       const ev = p.evidence.length ? `<ul>${p.evidence.map((e) => `<li>${escHtml((EVIDENCE_KINDS.find((k) => k.id === e.kind) || {}).label)}: ${escHtml(e.title || e.fileName)}${e.date ? ` (${escHtml(e.date)})` : ""}${e.fileName ? ` \xB7 file ${escHtml(e.fileName)}` : ""}${e.sha256 ? ` \xB7 SHA-256 ${escHtml(e.sha256.slice(0, 16))}\u2026` : ""}</li>`).join("")}</ul>` : '<p class="miss">No evidence attached.</p>';
       return `<article><header><h2>${escHtml(p.fields.elementName.value || p.fields.elementType.value)}</h2>
-      <p><b>Passport</b> ${escHtml(p.fields.passportId.value)} \xB7 <b>GlobalId</b> ${escHtml(p.globalId)} \xB7 <b>Status</b> ${escHtml(PASSPORT_STATUS_LABEL[p.status])} \xB7 <b>Completeness</b> ${c.pct}% (${c.filled}/${c.required} required fields)</p>
-      <p class="note">Verification: values marked \u201CExtracted from IFC\u201D, \u201CCalculated\u201D or \u201CManually entered\u201D are unverified unless marked \u201CInspection verified\u201D.</p></header>
+      <p><b>Passport</b> ${escHtml(p.fields.passportId.value)} \xB7 ${p.globalId ? `<b>GlobalId</b> ${escHtml(p.globalId)}` : `<b>Component ID</b> ${escHtml(p.componentId)} (surveyed, no IFC GlobalId)`} \xB7 <b>Status</b> ${escHtml(PASSPORT_STATUS_LABEL[p.status])} \xB7 <b>Completeness</b> ${c.pct}% (${c.filled}/${c.required} required fields)</p>
+      <p class="note">Verification: values marked \u201CExtracted from IFC\u201D, \u201CCalculated\u201D, \u201CManually entered\u201D, \u201CTaken from drawings\u201D, \u201CImported from file\u201D or \u201CEstimated\u201D are unverified unless marked \u201CInspection verified\u201D.</p></header>
       ${sections}<section><h3>Evidence</h3>${ev}</section></article>`;
     };
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Material passports \xB7 ${escHtml(projectName)}</title><style>
     body{font:12px/1.45 'IBM Plex Sans',system-ui,sans-serif;color:#1b1b1b;margin:24px}h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:0 0 4px}h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b6b6b;margin:14px 0 4px}
     article{page-break-after:always;border-top:2px solid #16804a;padding-top:10px;margin-top:18px}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:3px 6px;border-bottom:1px solid #e5e5e5}th{width:28%;font-weight:500}td.src{color:#6b6b6b;font-size:11px;width:36%}.miss{color:#b23f3f}.note{color:#6b6b6b;font-size:11px}
     @media print{body{margin:12mm}}</style></head><body>
-    <h1>Material passports</h1><p>Project: ${escHtml(projectName)} \xB7 Source model: ${escHtml(model.fileName)} (${escHtml(model.schemaVersion)}) \xB7 Generated ${escHtml(now)} by BIM2REUSE \xB7 ${passports.length} passport${passports.length === 1 ? "" : "s"}</p>
+    <h1>Material passports</h1><p>Project: ${escHtml(projectName)} \xB7 Source: ${escHtml(model.isSurvey ? "building survey (no IFC model)" : `${model.fileName} (${model.schemaVersion})${model.hasSurvey ? " and building survey" : ""}`)} \xB7 Generated ${escHtml(now)} by BIM2REUSE \xB7 ${passports.length} passport${passports.length === 1 ? "" : "s"}</p>
     ${passports.map(one).join("")}</body></html>`;
   }
   Object.assign(window, {
