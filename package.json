@@ -1,0 +1,28 @@
+{
+  "name": "bim2reuse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BIM2REUSE: from BIM to circular construction. Browser-based IFC material inventories, passports, reuse assessment and reuse matching.",
+  "homepage": "https://isaddiq.github.io/BIM2Reuse/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaddiq/BIM2Reuse.git"
+  },
+  "bugs": "https://github.com/isaddiq/BIM2Reuse/issues",
+  "author": "Saddiq (https://isaddiq.github.io/)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "npx --yes serve .",
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:browser": "node tests/browser/smoke.mjs",
+    "test:all": "npm run build && npm test && npm run test:browser"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5",
+    "highs": "^1.16.0",
+    "puppeteer-core": "^23.11.1",
+    "web-ifc": "^0.0.35"
+  }
+}

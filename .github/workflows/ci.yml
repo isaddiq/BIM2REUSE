@@ -1,0 +1,27 @@
+# Unit and browser tests on every push and pull request.
+# GitHub Pages serves the branch root directly (compiled files are committed), so no deploy step is needed here.
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (includes the check that compiled files match the sources)
+        run: npm test
+      - name: Browser tests
+        run: npm run test:browser
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: tests/browser/output/*.png

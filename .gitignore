@@ -1,0 +1,8 @@
+# Local VS Code workspace settings
+.vscode/
+
+# Development dependencies (tests and build only; the site needs none)
+node_modules/
+
+# Browser test output
+tests/browser/output/

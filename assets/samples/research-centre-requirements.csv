@@ -1,0 +1,8 @@
+id,label,component,material_category,grade,cross_section,length_m,width_m,height_m,quantity,min_condition,require_verified,mass_kg
+P1,Roof beam 5.4 m,beam,steel,S275,IPE 300,5.4,,,8,3,yes,228.4
+P2,Floor beam 3.6 m,beam,steel,S275,IPE 300,3.6,,,10,3,yes,152.2
+P3,Trimmer beam 2.4 m,beam,steel,S275,IPE 300,2.4,,,12,3,yes,101.5
+P4,Glulam ridge beam 7.5 m,beam,timber,GL24h,140x400,7.5,,,2,3,yes,201.6
+P5,Internal door 1.0 x 2.0 m,door,timber,,,1.0,,2.0,8,4,,
+P6,Glazed screen panel 1.8 x 1.4 m,window,glass,,,1.8,,1.4,6,3,,
+P7,Steel column HEB 200 3.0 m,column,steel,S275,HEB 200,3.0,,,4,3,yes,183.9

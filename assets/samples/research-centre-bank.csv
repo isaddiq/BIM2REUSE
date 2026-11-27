@@ -1,0 +1,5 @@
+id,source_building,global_id,component,name,material,material_category,length_m,width_m,height_m,cross_section,quantity,mass_kg,condition,grade,availability,verification,location,distance_km,cost,currency,passport,notes
+HW-01,Harbour warehouse (sample),,beam,Glulam beam GL24h 140x400,Glued laminated timber GL24h,timber,8.0,0.14,0.4,140x400,2,430,4,GL24h,recovered,verified,Depot North,42,180,EUR,,Illustrative stock for the BIM2REUSE sample
+HW-02,Harbour warehouse (sample),,beam,Steel beam IPE 300,Structural steel S275,steel,7.2,0.15,0.3,IPE 300,4,1218,4,S275,available,verified,Depot North,42,95,EUR,,Illustrative stock for the BIM2REUSE sample
+HW-03,Harbour warehouse (sample),,beam,Steel beam IPE 200,Structural steel S235,steel,5.0,0.1,0.2,IPE 200,6,672,3,S235,pending-inspection,pending,Depot North,42,,,,Grade below the requirement in the example demand
+HW-04,Harbour warehouse (sample),,door,Timber door leaf 926x2040,Solid softwood door leaf,timber,0.926,0.044,2.04,,3,75,3,,potentially-available,not-started,Depot North,42,,,,Narrower than the example demand

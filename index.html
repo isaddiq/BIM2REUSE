@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BIM2REUSE · From BIM to Circular Construction</title>
+<meta name="description" content="BIM2REUSE is a free, browser-based circular construction platform. Import an IFC model and build a material inventory, component passports, a reuse assessment, a deconstruction plan, a material bank, optimised reuse matching and a carbon and cost comparison. Files never leave your device." />
+<meta name="keywords" content="BIM2REUSE, circular construction, material reuse, IFC, BIM, material passport, material inventory, reuse assessment, deconstruction, design for disassembly, embodied carbon, web-ifc, Three.js, IFC4" />
+<meta name="author" content="Saddiq" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)" />
+<link rel="canonical" href="https://isaddiq.github.io/BIM2Reuse/" />
+
+<!-- Social previews -->
+<meta property="og:site_name" content="BIM2REUSE" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://isaddiq.github.io/BIM2Reuse/" />
+<meta property="og:title" content="BIM2REUSE · From BIM to Circular Construction" />
+<meta property="og:description" content="Turn IFC building models into traceable material inventories, passports and reuse decisions, entirely in the browser." />
+<meta property="og:image" content="https://isaddiq.github.io/BIM2Reuse/assets/images/og-image.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="BIM2REUSE: an IFC building model coloured by element category beside the circular construction workflow" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="BIM2REUSE · From BIM to Circular Construction" />
+<meta name="twitter:description" content="Turn IFC building models into traceable material inventories, passports and reuse decisions, entirely in the browser." />
+<meta name="twitter:image" content="https://isaddiq.github.io/BIM2Reuse/assets/images/og-image.png" />
+<meta name="twitter:image:alt" content="BIM2REUSE: an IFC building model coloured by element category beside the circular construction workflow" />
+
+<!-- Icons and install metadata -->
+<link rel="icon" type="image/svg+xml" href="assets/logos/bim2reuse-mark.svg" />
+<link rel="icon" type="image/png" sizes="192x192" href="assets/logos/icon-192.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/logos/apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
+
+<!-- Structured data for search engines -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://isaddiq.github.io/BIM2Reuse/#website",
+      "url": "https://isaddiq.github.io/BIM2Reuse/",
+      "name": "BIM2REUSE",
+      "description": "From BIM to Circular Construction.",
+      "inLanguage": "en",
+      "publisher": { "@id": "https://isaddiq.github.io/#person" }
+    },
+    {
+      "@type": "WebApplication",
+      "@id": "https://isaddiq.github.io/BIM2Reuse/#app",
+      "name": "BIM2REUSE",
+      "url": "https://isaddiq.github.io/BIM2Reuse/",
+      "description": "A free, browser-based circular construction platform built on an IFC viewer: material inventories, material passports, reuse assessment, deconstruction planning, a material bank, reuse matching by mixed-integer optimisation, and carbon and cost comparison, with every record traceable to its IFC GlobalId.",
+      "applicationCategory": "DesignApplication",
+      "applicationSubCategory": "BIM / IFC circular construction",
+      "operatingSystem": "Any (runs in a modern web browser)",
+      "browserRequirements": "Requires JavaScript, WebGL, WebAssembly and IndexedDB",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "image": "https://isaddiq.github.io/BIM2Reuse/assets/images/og-image.png",
+      "featureList": [
+        "Online IFC viewer for IFC2x3, IFC4 and IFC4.3 files, with 2D floor plans",
+        "Model tree, IFC schema browser, inspector, search, section box and measuring",
+        "Material inventory from IFC material sets and quantities, with the provenance of every value",
+        "Component material passports with an evidence-based approval workflow",
+        "Rule-based reuse screening with mandatory checks",
+        "Deconstruction dependency graph, removal stages, cycle detection and critical path",
+        "Material bank from the model, CSV and JSON inventories and other projects",
+        "Reuse matching and cutting-stock optimisation with HiGHS in a Web Worker",
+        "Carbon and cost comparison from user-supplied factors (EN 15804 modules)",
+        "Combined printable project report",
+        "Local projects with autosave and portable project packages",
+        "Files are parsed locally with web-ifc; nothing is uploaded"
+      ],
+      "license": "https://opensource.org/licenses/MIT",
+      "author": { "@id": "https://isaddiq.github.io/#person" },
+      "sameAs": ["https://github.com/isaddiq/BIM2Reuse"]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "name": "BIM2REUSE source code",
+      "codeRepository": "https://github.com/isaddiq/BIM2Reuse",
+      "programmingLanguage": "JavaScript",
+      "license": "https://opensource.org/licenses/MIT",
+      "targetProduct": { "@id": "https://isaddiq.github.io/BIM2Reuse/#app" },
+      "author": { "@id": "https://isaddiq.github.io/#person" }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://isaddiq.github.io/#person",
+      "name": "Saddiq",
+      "url": "https://isaddiq.github.io/",
+      "sameAs": ["https://github.com/isaddiq"]
+    }
+  ]
+}
+</script>
+<!-- Preload the IFC runtime so it is in flight before the first file is opened. -->
+<link rel="preload" href="assets/js/ifc-loader-bundle.js?v=web-ifc-0.0.35" as="script" />
+<link rel="preload" href="assets/js/web-ifc-0.0.35/web-ifc.wasm" as="fetch" crossorigin="anonymous" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/css/main.css" />
+<script>
+  // Apply the saved or system theme before first paint.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('bim2reuse-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<script>
+  const { useCallback, useEffect, useMemo, useReducer, useRef, useState } = React;
+</script>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+window.THREE = THREE;
+
+// Each compiled script is an IIFE that publishes its API on window; order matters.
+// Keep this list in the order of SOURCES in scripts/build.mjs (a unit test checks it).
+const appScripts = [
+  'assets/js/compiled/core/schema.js',
+  'assets/js/compiled/core/ifcloader.js',
+  'assets/js/compiled/core/spatial.js',
+  'assets/js/compiled/core/plan.js',
+  'assets/js/compiled/core/zip.js',
+  'assets/js/compiled/core/registry.js',
+  'assets/js/compiled/core/project.js',
+  'assets/js/compiled/core/modelstats.js',
+  'assets/js/compiled/core/materials.js',
+  'assets/js/compiled/core/passports.js',
+  'assets/js/compiled/core/assessment.js',
+  'assets/js/compiled/core/bank.js',
+  'assets/js/compiled/core/matching.js',
+  'assets/js/compiled/core/carbon.js',
+  'assets/js/compiled/core/deconstruction.js',
+  'assets/js/compiled/core/reports.js',
+  'assets/js/compiled/viewer/viewer.js',
+  'assets/js/compiled/viewer/viewcube.js',
+  'assets/js/compiled/ui/icons.js',
+  'assets/js/compiled/ui/panels.js',
+  'assets/js/compiled/ui/planview.js',
+  'assets/js/compiled/ui/workspace.js',
+  'assets/js/compiled/ui/datatable.js',
+  'assets/js/compiled/ui/materialsui.js',
+  'assets/js/compiled/ui/passportsui.js',
+  'assets/js/compiled/ui/assessmentui.js',
+  'assets/js/compiled/ui/bankui.js',
+  'assets/js/compiled/ui/matchingui.js',
+  'assets/js/compiled/ui/carbonui.js',
+  'assets/js/compiled/ui/deconstructionui.js',
+  'assets/js/compiled/ui/reportsui.js',
+  'assets/js/compiled/ui/modules.js',
+  'assets/js/compiled/ui/projectui.js',
+  'assets/js/compiled/app.js',
+];
+
+// Download all scripts in parallel; async=false keeps them executing in list order.
+try {
+  await Promise.all(appScripts.map(src => new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  })));
+} catch (err) {
+  document.getElementById('root').innerHTML = '<div class="boot-error"><h1>BIM2REUSE could not start</h1><p>' + err.message + '. Serve the folder over HTTP (for example <code>npx serve .</code>) instead of opening the file directly.</p></div>';
+}
+</script>
+</head>
+<body>
+<main id="root">
+  <!-- Hidden summary for crawlers that do not run JavaScript; React replaces it on mount. -->
+  <noscript><div class="boot-error"><h1>BIM2REUSE</h1><p>BIM2REUSE needs JavaScript to read IFC files in your browser.</p></div></noscript>
+  <div class="boot-screen" hidden>
+    <div class="boot-card">
+      <img src="assets/logos/bim2reuse-mark.svg" alt="" width="48" height="48" />
+      <h1>BIM2REUSE</h1>
+      <p class="boot-tagline">From BIM to Circular Construction</p>
+      <p>BIM2REUSE is a free, browser-based circular construction platform. Import an IFC model to explore its geometry and semantics, check which elements carry the material and property data reuse decisions need, and save the project locally. It then builds a material inventory, component passports, a reuse assessment, a deconstruction plan, a material bank, optimised reuse matching for a new building, and a carbon and cost comparison, each traceable to the IFC element it came from. Files are parsed on your device with web-ifc, so nothing is uploaded.</p>
+      <p class="boot-links"><a href="https://github.com/isaddiq/BIM2Reuse">Source code on GitHub</a> · MIT licence</p>
+    </div>
+  </div>
+</main>
+
+<div id="vc-popover" class="vc-popover" role="dialog" aria-label="Visitor statistics">
+  <div class="vc-popover-top">
+    <span>Visitor statistics</span>
+    <button type="button" class="vc-pop-close" onclick="document.getElementById('vc-popover').classList.remove('vc-open')" aria-label="Close visitor statistics">&times;</button>
+  </div>
+  <a href="https://info.flagcounter.com/H4IP" target="_blank" rel="noopener noreferrer" class="vc-flag-link" title="Full visitor statistics"><img src="https://s05.flagcounter.com/count2/H4IP/bg_FFFFFF/txt_000000/border_CCCCCC/columns_7/maxflags_250/viewers_0/labels_1/pageviews_0/flags_0/percent_0/" alt="Flag Counter" border="0" class="vc-flag-img" loading="lazy" referrerpolicy="no-referrer-when-downgrade" /></a>
+</div>
+</body>
+</html>
